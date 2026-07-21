@@ -1,0 +1,64 @@
+<!-- 
+
+<script>
+
+$(document).ready(function() {
+
+    var table = $('#page-length-option').on('page.dt', function() {
+        $(document).on('click', '.clickable-row', function() {
+            window.location.href = $(this).data("href");
+        });
+    }).DataTable({
+        stateSave: true,
+        responsive: true,
+        scrollX: true,
+        lengthMenu: [10, 25, 50, 100],
+
+        initComplete: function () {
+            // show table AFTER restore applied
+            $('#page-length-option').css('visibility', 'visible');
+        }
+    });
+
+});
+</script> -->
+
+
+<script>
+    // ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+$(document).ready(function () {
+  $('.modal').modal();
+
+  // savePageLength.ejs already DataTable initialize karta hai.
+  // Hum dobara init NAHI karenge — bas jab wo ready ho jaye, uska instance le lenge.
+  function grabDataTableInstance(retries) {
+    if ($.fn.DataTable.isDataTable('#page-length-option')) {
+      userTableInstance = $('#page-length-option').DataTable(); // existing instance return karega, reinit nahi
+      onTableReady();
+    } else if (retries > 0) {
+      // Thodi der wait karo, kyunki savePageLength ka init thoda async/baad mein ho sakta hai
+      setTimeout(function () { grabDataTableInstance(retries - 1); }, 100);
+    } else {
+      console.warn('DataTable instance not found after waiting.');
+    }
+  }
+
+  function onTableReady() {
+    // Restore checkbox state on every redraw (page change / sort / search / load more)
+    userTableInstance.on('draw.dt', function () {
+      restoreCheckboxStates();
+    });
+
+    restoreCheckboxStates();
+
+    // Background mein baaki data load karna shuru kar do
+    if (hasMoreUsers) {
+      setTimeout(loadMoreUsersBackground, 800);
+    }
+  }
+
+  grabDataTableInstance(20); // max 20 * 100ms = 2 second tak wait karega
+});
+</script>

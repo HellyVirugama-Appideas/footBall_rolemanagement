@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html class="loading" lang="en" data-textdirection="ltr">
+
+<head>
+  <%- include('_layouts/head') %>
+    <title>User List | <%= title %>
+    </title>
+    <link rel="stylesheet" type="text/css" href="/app-assets/vendors/data-tables/css/jquery.dataTables.min.css">
+    <link rel="stylesheet" type="text/css"
+      href="/app-assets/vendors/data-tables/extensions/responsive/css/responsive.dataTables.min.css">
+    <link rel="stylesheet" type="text/css" href="/app-assets/vendors/data-tables/css/select.dataTables.min.css">
+    <link rel="stylesheet" type="text/css" href="/app-assets/css/pages/data-tables.css">
+    <link rel="stylesheet" type="text/css"
+      href="https://cdnjs.cloudflare.com/ajax/libs/Dropify/0.2.2/css/dropify.min.css">
+
+    <style>
+      /* ═══════════════════════════════════════
+         SEARCH & FILTER BAR
+      ═══════════════════════════════════════ */
+      .search-filter-card {
+        background: #fff;
+        border: 1px solid #e8e0f7;
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 18px;
+        box-shadow: 0 2px 8px rgba(124, 77, 255, 0.06);
+      }
+
+      .search-filter-card .row {
+        margin-bottom: 0 !important;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .sf-field {
+        flex: 1;
+        min-width: 160px;
+        position: relative;
+      }
+
+      .sf-field label {
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        color: #9e9e9e;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-bottom: 5px;
+      }
+
+      .sf-field input,
+      .sf-field select {
+        width: 100%;
+        height: 38px;
+        border: 1.5px solid #e0d6f7;
+        border-radius: 8px;
+        padding: 0 12px;
+        font-size: 13px;
+        color: #333;
+        background: #faf8ff;
+        outline: none;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        box-sizing: border-box;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+
+      .sf-field input:focus,
+      .sf-field select:focus {
+        border-color: #7c4dff;
+        background: #fff;
+        box-shadow: 0 0 0 3px rgba(124, 77, 255, 0.10);
+      }
+
+      .sf-field .search-icon-btn {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        width: 38px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #bbb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        margin-top: 22px;
+      }
+
+      .sf-field .search-icon-btn:hover {
+        color: #7c4dff;
+      }
+
+      /* .sf-field input[type="text"] { padding-right: 38px; } */
+
+      .sf-actions {
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+        padding-bottom: 2px;
+        margin-top: 22px;
+        flex-shrink: 0;
+      }
+
+      .sf-actions .btn-search {
+        height: 38px;
+        padding: 0 20px;
+        background: #7c4dff;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: background 0.2s;
+      }
+
+      .sf-actions .btn-search:hover {
+        background: #651fff;
+      }
+
+      .sf-actions .btn-clear {
+        height: 38px;
+        padding: 0 16px;
+        background: #f5f5f5;
+        color: #777;
+        border: 1.5px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 13px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        text-decoration: none;
+        transition: background 0.2s;
+      }
+
+      .sf-actions .btn-clear:hover {
+        background: #eeeeee;
+        color: #444;
+      }
+
+      /* Select dropdown arrow */
+      .sf-select-wrap {
+        position: relative;
+      }
+
+      .sf-select-wrap::after {
+        content: '▾';
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #aaa;
+        font-size: 12px;
+        pointer-events: none;
+      }
+
+      /* ═══════════════════════════════════════
+         SEARCH HISTORY DROPDOWN
+         — opens only on search icon click —
+      ═══════════════════════════════════════ */
+      .search-history-wrap {
+        position: relative;
+      }
+
+      .history-dropdown {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        background: #fff;
+        border: 1.5px solid #e0d6f7;
+        border-radius: 10px;
+        z-index: 1000;
+        box-shadow: 0 8px 24px rgba(124, 77, 255, 0.12);
+        display: none;
+        max-height: 230px;
+        overflow-y: auto;
+      }
+
+      .history-dropdown.open {
+        display: block;
+      }
+
+      .history-header {
+        padding: 8px 14px;
+        font-size: 10.5px;
+        color: #bbb;
+        text-transform: uppercase;
+        letter-spacing: 0.07em;
+        border-bottom: 1px solid #f5f0ff;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .clear-all-hist {
+        color: #7c4dff;
+        cursor: pointer;
+        font-size: 11px;
+        font-weight: 500;
+      }
+
+      .clear-all-hist:hover {
+        text-decoration: underline;
+      }
+
+      .history-item {
+        padding: 9px 14px;
+        cursor: pointer;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        border-bottom: 1px solid #faf8ff;
+        color: #444;
+        transition: background 0.15s;
+      }
+
+      .history-item:last-child {
+        border-bottom: none;
+      }
+
+      .history-item:hover {
+        background: #f8f5ff;
+      }
+
+      .hist-text {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #555;
+        font-size: 13px;
+      }
+
+      .hist-text i {
+        font-size: 14px;
+        color: #ccc;
+      }
+
+      .hist-remove {
+        color: #ccc;
+        font-size: 18px;
+        line-height: 1;
+        padding: 0 2px;
+        transition: color 0.15s;
+      }
+
+      .hist-remove:hover {
+        color: #e53935;
+      }
+
+      .hist-empty {
+        padding: 14px;
+        text-align: center;
+        color: #bbb;
+        font-size: 12px;
+      }
+
+      /* ═══════════════════════════════════════
+         CV SELECTION TOOLBAR
+      ═══════════════════════════════════════ */
+      #cvSelectionBar {
+        display: none;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 16px;
+        background: linear-gradient(135deg, #ede7f6 0%, #e8eaf6 100%);
+        border: 1.5px solid #d1c4e9;
+        border-radius: 10px;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+        animation: slideDown 0.2s ease;
+      }
+
+      #cvSelectionBar.active {
+        display: flex;
+      }
+
+      @keyframes slideDown {
+        from {
+          opacity: 0;
+          transform: translateY(-6px);
+        }
+
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .sel-badge {
+        background: #7c4dff;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 3px 10px;
+        border-radius: 20px;
+        min-width: 24px;
+        text-align: center;
+      }
+
+      #selectedCount {
+        font-weight: 600;
+        color: #512da8;
+        font-size: 13.5px;
+      }
+
+      #downloadSelectedBtn {
+        background: #7c4dff;
+        color: #fff;
+        border: none;
+        border-radius: 7px;
+        padding: 7px 16px;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        transition: background 0.2s, transform 0.1s;
+      }
+
+      #downloadSelectedBtn:hover {
+        background: #651fff;
+        transform: translateY(-1px);
+      }
+
+      #downloadSelectedBtn:active {
+        transform: translateY(0);
+      }
+
+      #downloadSelectedBtn:disabled {
+        background: #c5c5c5;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      #downloadSelectedBtn i {
+        font-size: 17px;
+      }
+
+      #clearSelectionBtn {
+        background: #fff;
+        border: 1.5px solid #d1c4e9;
+        border-radius: 7px;
+        padding: 6px 14px;
+        cursor: pointer;
+        font-size: 13px;
+        color: #7c4dff;
+        font-weight: 500;
+        transition: background 0.15s;
+      }
+
+      #clearSelectionBtn:hover {
+        background: #f3eeff;
+      }
+
+      .max-limit-note {
+        font-size: 11.5px;
+        color: #9e9e9e;
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .max-limit-note strong {
+        color: #e53935;
+      }
+
+      /* ═══════════════════════════════════════
+         CHECKBOX COLUMN
+      ═══════════════════════════════════════ */
+      .cv-check-cell {
+        width: 38px !important;
+        text-align: center !important;
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+      }
+
+      /* Override Materialize checkbox styles for table */
+      .cv-check-cell label {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        height: 20px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+
+      .cv-check-cell input[type="checkbox"] {
+        opacity: 1 !important;
+        position: static !important;
+        pointer-events: auto !important;
+        width: 16px !important;
+        height: 16px !important;
+        margin: 0 !important;
+        accent-color: #7c4dff;
+        cursor: pointer;
+      }
+
+      /* Hide the Materialize custom span inside table checkboxes */
+      .cv-check-cell label span {
+        display: none !important;
+      }
+
+      /* Header checkbox same treatment */
+      #selectAllCv {
+        opacity: 1 !important;
+        position: static !important;
+        pointer-events: auto !important;
+        width: 16px !important;
+        height: 16px !important;
+        margin: 0 !important;
+        accent-color: #7c4dff;
+        cursor: pointer;
+      }
+
+      /* ═══════════════════════════════════════
+         TABLE ENHANCEMENTS
+      ═══════════════════════════════════════ */
+      #page-length-option thead th {
+        background: #faf8ff;
+        font-size: 12px;
+        font-weight: 600;
+        color: #7c4dff;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        border-bottom: 2px solid #e8e0f7 !important;
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+        white-space: nowrap;
+      }
+
+      #page-length-option tbody tr {
+        transition: background 0.15s;
+      }
+
+      #page-length-option tbody tr:hover {
+        background: #faf8ff !important;
+      }
+
+      #page-length-option tbody tr.row-selected {
+        background: #f3eeff !important;
+      }
+
+      #page-length-option tbody td {
+        font-size: 13px;
+        vertical-align: middle;
+        border-bottom: 1px solid #f5f0ff !important;
+        padding-top: 10px !important;
+        padding-bottom: 10px !important;
+      }
+
+      /* Status chips */
+      .status-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 10px;
+        border-radius: 20px;
+        font-size: 11.5px;
+        font-weight: 600;
+      }
+
+      .status-chip.available {
+        background: #e8f5e9;
+        color: #2e7d32;
+      }
+
+      .status-chip.pending {
+        background: #ffeee8;
+        color: #c62828;
+      }
+
+      .status-chip::before {
+        content: '';
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+        display: inline-block;
+      }
+
+      /* Action icons */
+      .action-btns {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+
+      .action-btns a {
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 6px;
+        transition: background 0.15s;
+        color: #666;
+      }
+
+      .action-btns a:hover {
+        background: #f0e6ff;
+        color: #7c4dff;
+      }
+
+      .action-btns a.del:hover {
+        background: #ffeeee;
+        color: #e53935;
+      }
+
+      .action-btns a i {
+        font-size: 18px;
+      }
+
+      /* ═══════════════════════════════════════
+         DOWNLOAD OVERLAY
+      ═══════════════════════════════════════ */
+      #dlOverlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(30, 20, 60, 0.55);
+        z-index: 9999;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        color: #fff;
+        font-size: 16px;
+        gap: 16px;
+        backdrop-filter: blur(2px);
+      }
+
+      #dlOverlay.show {
+        display: flex;
+      }
+
+      .dl-card {
+        background: #fff;
+        border-radius: 14px;
+        padding: 30px 36px;
+        text-align: center;
+        color: #333;
+        min-width: 280px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+      }
+
+      #dlSpinner {
+        width: 44px;
+        height: 44px;
+        border: 4px solid #e8e0f7;
+        border-top-color: #7c4dff;
+        border-radius: 50%;
+        animation: spin .7s linear infinite;
+        margin: 0 auto 16px;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      .dl-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 4px;
+      }
+
+      #dlMsg {
+        font-size: 13px;
+        color: #888;
+      }
+
+      /* ═══════════════════════════════════════
+   BREADCRUMB BUTTONS RESPONSIVE
+═══════════════════════════════════════ */
+      @media (max-width: 600px) {
+        #breadcrumbs-wrapper .right-align-md>div {
+          justify-content: flex-start !important;
+        }
+
+        #breadcrumbs-wrapper .btn-breadcrumbs {
+          font-size: 11px !important;
+          padding: 0 10px !important;
+          height: 30px !important;
+          line-height: 30px !important;
+        }
+
+        #breadcrumbs-wrapper .btn-breadcrumbs .material-icons.left {
+          font-size: 14px !important;
+          margin-right: 4px !important;
+        }
+      }
+    </style>
+</head>
+
+<body
+  class="vertical-layout page-header-light vertical-menu-collapsible vertical-dark-menu preload-transitions 2-columns"
+  data-open="click" data-menu="vertical-dark-menu" data-col="2-columns">
+
+  <%- include('_layouts/sidenavbar') %>
+
+    <div id="main">
+      <div class="row">
+        <div id="breadcrumbs-wrapper" data-image="/app-assets/images/gallery/breadcrumb-bg.jpg">
+          <div class="container">
+            <div class="row">
+              <div class="col s12 m6 l6">
+                <h5 class="breadcrumbs-title mt-0 mb-0">
+                  <a class="mr-2" href="/"><i class="material-icons">arrow_back</i></a>
+                  <span>User</span>
+                </h5>
+              </div>
+              <div class="col s12 m6 l6 right-align-md">
+                <div style="
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+    align-items: center;
+  ">
+
+                  <!-- Export -->
+                  <% if (typeof isSuperAdmin !=='undefined' && isSuperAdmin) { %>
+                    <form action="/user/export" method="post" style="display:inline;">
+                      <button type="submit" class="btn gradient-45deg-purple-deep-orange btn-breadcrumbs">
+                        Export
+                      </button>
+                    </form>
+                    <% } %>
+
+                      <!-- Import CSV -->
+                      <% if (typeof can==='function' && can('candidates', 'add' )) { %>
+                        <button onclick="document.getElementById('csvImportModal').style.display='flex'"
+                          class="btn gradient-45deg-green-teal btn-breadcrumbs">
+                          <i class="material-icons left">file_upload</i> Import CSV
+                        </button>
+                        <% } %>
+
+                          <!-- Download All CVs -->
+                          <% if (typeof isSuperAdmin !=='undefined' && isSuperAdmin) { %>
+                            <button type="button" class="btn gradient-45deg-indigo-purple btn-breadcrumbs"
+                              onclick="if(confirm('Download ALL CVs as ZIP? This may take time.')) { window.location.href='/user/download-all-cvs'; }">
+                              <i class="material-icons left">cloud_download</i>
+                              Download All CVs
+                            </button>
+                            <% } %>
+
+                              <!-- CV Upload -->
+                              <% if (typeof can==='function' && can('cvUpload', 'add' )) { %>
+                                <button type="button" class="btn blue btn-breadcrumbs"
+                                  onclick="window.location.href='/cv-upload'">
+                                  <i class="material-icons left">cloud_upload</i>
+                                  CV Upload
+                                </button>
+                                <% } %>
+
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col s12">
+          <div class="container">
+            <div class="section section-data-tables">
+              <div class="row">
+                <div class="col s12">
+                  <div class="card">
+                    <div class="card-content">
+                      <%- messages('messages', locals) %>
+
+                        <!-- ══ Search & Filter ══ -->
+                        <form method="GET" action="/user" id="userSearchForm">
+                          <div class="search-filter-card">
+                            <div class="row">
+
+                              <!-- Search input with history icon button -->
+                              <div class="sf-field search-history-wrap" style="min-width:200px;">
+                                <label>Search</label>
+                                <input type="text" name="search" id="us"
+                                  value="<%= (typeof query !== 'undefined' && query.search) ? query.search : '' %>"
+                                  placeholder="Name, email, skills..." autocomplete="off">
+                                <!-- History opens ONLY on this icon click -->
+                                <button type="button" class="search-icon-btn" id="historyToggleBtn"
+                                  title="Recent searches">
+                                  <i class="material-icons" style="font-size:18px;">history</i>
+                                </button>
+                                <div class="history-dropdown" id="historyDropdown"></div>
+                              </div>
+
+                              <!-- Experience -->
+                              <div class="sf-field" style="max-width:160px;">
+                                <label>Experience</label>
+                                <div class="sf-select-wrap">
+                                  <select name="experience" id="uexp">
+                                    <option value="">All</option>
+                                    <option value="Fresher" <%=(typeof query !=='undefined' &&
+                                      query.experience==='Fresher' ) ? 'selected' : '' %>>Fresher</option>
+                                    <option value="1" <%=(typeof query !=='undefined' && query.experience==='1' )
+                                      ? 'selected' : '' %>>1+ Year</option>
+                                    <option value="2" <%=(typeof query !=='undefined' && query.experience==='2' )
+                                      ? 'selected' : '' %>>2+ Years</option>
+                                    <option value="3" <%=(typeof query !=='undefined' && query.experience==='3' )
+                                      ? 'selected' : '' %>>3+ Years</option>
+                                    <option value="5" <%=(typeof query !=='undefined' && query.experience==='5' )
+                                      ? 'selected' : '' %>>5+ Years</option>
+                                  </select>
+                                </div>
+                              </div>
+
+                              <!-- City -->
+                              <div class="sf-field" style="max-width:160px;">
+                                <label>City</label>
+                                <input type="text" name="city" id="ucity"
+                                  value="<%= (typeof query !== 'undefined' && query.city) ? query.city : '' %>"
+                                  placeholder="City...">
+                              </div>
+
+                              <!-- Buttons -->
+                              <div class="sf-actions">
+                                <button type="submit" class="btn-search">
+                                  <i class="material-icons" style="font-size:17px;">search</i>
+                                  Search
+                                </button>
+                                <a href="/user" class="btn-clear">
+                                  <i class="material-icons" style="font-size:16px;">clear</i>
+                                  Reset
+                                </a>
+                              </div>
+
+                            </div>
+                          </div>
+                        </form>
+
+                        <!-- ══ CV Selection Toolbar ══ -->
+                        <div id="cvSelectionBar" <%=(typeof isSuperAdmin !=='undefined' && isSuperAdmin) ? ''
+                          : 'style="display:none !important;"' %>>
+                          <span class="sel-badge" id="selBadge">0</span>
+                          <span id="selectedCount">users selected</span>
+                          <button id="downloadSelectedBtn" onclick="downloadSelectedCVs()" disabled>
+                            <i class="material-icons">download</i>
+                            Download Selected CVs
+                          </button>
+                          <button id="clearSelectionBtn" onclick="clearAllSelections()">
+                            ✕ Clear
+                          </button>
+                          <span class="max-limit-note">
+                            <i class="material-icons" style="font-size:14px;color:#e53935;">info</i>
+                            Max <strong>200</strong> CVs per download
+                          </span>
+                        </div>
+
+                        <!-- ══ Table ══ -->
+                        <div class="row">
+                          <div class="col s12 overflow">
+                            <table id="page-length-option" class="display">
+                              <thead>
+                                <tr>
+                                  <th class="cv-check-cell">
+                                    <input type="checkbox" id="selectAllCv" title="Select all visible">
+                                  </th>
+                                  <th>Sr</th>
+                                  <th>Name</th>
+                                  <th>Email</th>
+                                  <th>Phone</th>
+                                  <th>City</th>
+                                  <th>Job Title</th>
+                                  <th>Experience</th>
+                                  <th>Resume</th>
+                                  <th>Action</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <% for (let i=0; i < users.length; i++) { %>
+                                  <tr>
+                                    <td class="cv-check-cell">
+                                      <input type="checkbox" class="cv-checkbox" data-userid="<%= users[i].id %>"
+                                        data-name="<%= users[i].name %>">
+                                    </td>
+                                    <td>
+                                      <%= i + 1 %>
+                                    </td>
+                                    <td style="font-weight:500;">
+                                      <%= users[i].name %>
+                                    </td>
+                                    <td style="color:#666;">
+                                      <% if (users[i].email && users[i].email.startsWith('cv.') &&
+                                        users[i].email.includes('@cv-upload.com')) { %>
+                                        <span style="color:#ccc;">—</span>
+                                        <% } else { %>
+                                          <%= users[i].email %>
+                                            <% } %>
+                                    </td>
+                                    <td style="color:#666;">
+                                      <%= users[i].phone || '—' %>
+                                    </td>
+                                    <td
+                                      style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#666;">
+                                      <%= users[i].city || '—' %>
+                                    </td>
+                                    <td
+                                      style="max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                                      <% const hasAdminTitles=users[i].jobTitle && Array.isArray(users[i].jobTitle) &&
+                                        users[i].jobTitle.length> 0;
+                                        const hasCvTitles = users[i].cvJobTitles && Array.isArray(users[i].cvJobTitles)
+                                        && users[i].cvJobTitles.length > 0;
+                                        %>
+
+                                        <% if (hasAdminTitles) { %>
+                                          <%= users[i].jobTitle.map(x=> x.name).join(', ') %>
+                                            <% } else if (hasCvTitles) { %>
+                                              <%= users[i].cvJobTitles.join(', ') %>
+        <% } else { %>
+            —
+        <% } %>
+    </td>
+                                    <td>
+                                      <% if (!users[i].experience) { %>
+                                        <span style="color:#ccc;">—</span>
+                                        <% } else if (users[i].experience===' Fresher' ||
+                                                users[i].experience===' Fresher' ) { %>
+                                                Fresher
+                                                <% } else if (/year/i.test(users[i].experience)) { %>
+                                                  <%= users[i].experience %>
+                                                    <% } else { %>
+                                                      <%= users[i].experience %> Year
+                                                        <% } %>
+                                    </td>
+                                    <td>
+                                      <% if (users[i].resumes && users[i].resumes.length> 0) { %>
+                                        <span class="status-chip available">Available</span>
+                                        <% } else { %>
+                                          <span class="status-chip pending">Pending</span>
+                                          <% } %>
+                                    </td>
+                                    <td>
+                                      <div class="action-btns">
+
+                                        <a href="/user/<%= users[i]._id %>" title="View">
+                                          <i class="material-icons">remove_red_eye</i>
+                                        </a>
+
+                                        <% if (typeof can==='function' && can('users', 'edit' )) { %>
+                                          <a href="/user/edit/<%= users[i]._id %>" title="Edit">
+                                            <i class="material-icons">edit</i>
+                                          </a>
+                                          <% } %>
+
+                                            <% if (typeof isSuperAdmin !=='undefined' && isSuperAdmin) { %>
+                                              <a href="/user/delete/<%= users[i]._id %>" class="del" title="Delete"
+                                                onclick="return confirm('Are you sure want to delete this user?')">
+                                                <i class="material-icons">delete</i>
+                                              </a>
+                                              <% } %>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                  <% } %>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="content-overlay"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Download Overlay -->
+    <div id="dlOverlay">
+      <div class="dl-card">
+        <div id="dlSpinner"></div>
+        <div class="dl-title">Preparing Download</div>
+        <div id="dlMsg">Creating ZIP file...</div>
+      </div>
+    </div>
+
+    <%- include('_layouts/commonJs') %>
+
+      <script>
+        // ══════════════════════════════════════════
+        // SEARCH HISTORY — opens ONLY on icon click
+        // ══════════════════════════════════════════
+        var HISTORY_KEY = 'userSearchHistory';
+        var MAX_HISTORY = 15;
+        var historyOpen = false;
+
+        function getHistory() {
+          try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch (e) { return []; }
+        }
+        function saveHistory(arr) { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr)); }
+
+        function saveSearchHistory() {
+          var val = document.getElementById('us').value.trim();
+          if (!val) return;
+          var hist = getHistory().filter(function (h) { return h !== val; });
+          hist.unshift(val);
+          if (hist.length > MAX_HISTORY) hist = hist.slice(0, MAX_HISTORY);
+          saveHistory(hist);
+        }
+
+        function openHistory() {
+          renderHistoryDropdown(document.getElementById('us').value.trim());
+          document.getElementById('historyDropdown').classList.add('open');
+          historyOpen = true;
+        }
+
+        function closeHistory() {
+          document.getElementById('historyDropdown').classList.remove('open');
+          historyOpen = false;
+        }
+
+        function renderHistoryDropdown(filter) {
+          var drop = document.getElementById('historyDropdown');
+          var hist = getHistory();
+          if (filter) hist = hist.filter(function (h) { return h.toLowerCase().includes(filter.toLowerCase()); });
+
+          if (!hist.length) {
+            drop.innerHTML = '<div class="hist-empty">No recent searches</div>';
+            return;
+          }
+
+          var html = '<div class="history-header">'
+            + '<span>Recent searches</span>'
+            + '<span class="clear-all-hist" onclick="clearAllHistory()">Clear all</span>'
+            + '</div>';
+
+          hist.forEach(function (h, idx) {
+            html += '<div class="history-item" onclick="selectHistory(\'' + h.replace(/'/g, "\\'") + '\')">'
+              + '<span class="hist-text"><i class="material-icons">history</i>' + h + '</span>'
+              + '<span class="hist-remove" onclick="removeHistory(event,' + idx + ')">×</span>'
+              + '</div>';
+          });
+
+          drop.innerHTML = html;
+        }
+
+        function selectHistory(val) {
+          document.getElementById('us').value = val;
+          closeHistory();
+        }
+
+        function removeHistory(e, idx) {
+          e.stopPropagation();
+          var hist = getHistory(); hist.splice(idx, 1); saveHistory(hist);
+          renderHistoryDropdown(document.getElementById('us').value);
+        }
+
+        function clearAllHistory() { saveHistory([]); renderHistoryDropdown(''); }
+
+        document.getElementById('historyToggleBtn').addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (historyOpen) { closeHistory(); } else { openHistory(); }
+        });
+
+        document.getElementById('us').addEventListener('focus', function () {
+          openHistory();
+        });
+
+        document.getElementById('us').addEventListener('input', function () {
+          renderHistoryDropdown(this.value.trim());
+          if (!historyOpen) {
+            document.getElementById('historyDropdown').classList.add('open');
+            historyOpen = true;
+          }
+        });
+
+        document.addEventListener('click', function (e) {
+          if (historyOpen && !document.querySelector('.search-history-wrap').contains(e.target)) {
+            closeHistory();
+          }
+        });
+
+        document.getElementById('userSearchForm').addEventListener('submit', saveSearchHistory);
+        document.getElementById('us').addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') { saveSearchHistory(); closeHistory(); }
+          if (e.key === 'Escape') { closeHistory(); }
+        });
+
+
+        // ══════════════════════════════════════════
+        // CV SELECTION & DOWNLOAD
+        // ══════════════════════════════════════════
+        var MAX_CV_LIMIT = 200;
+        var selectedUserIds = new Set();
+
+        function updateSelectionUI() {
+          var count = selectedUserIds.size;
+          var bar = document.getElementById('cvSelectionBar');
+          var btn = document.getElementById('downloadSelectedBtn');
+          var cnt = document.getElementById('selectedCount');
+          var badge = document.getElementById('selBadge');
+
+          badge.textContent = count;
+          cnt.textContent = count === 1 ? 'user selected' : 'users selected';
+
+          if (count > 0) {
+            bar.classList.add('active');
+            btn.disabled = false;
+          } else {
+            bar.classList.remove('active');
+            btn.disabled = true;
+          }
+
+          if (count >= MAX_CV_LIMIT) {
+            badge.textContent = count + ' / ' + MAX_CV_LIMIT;
+            document.querySelectorAll('.cv-checkbox:not(:checked)').forEach(function (cb) { cb.disabled = true; });
+          } else {
+            document.querySelectorAll('.cv-checkbox').forEach(function (cb) { cb.disabled = false; });
+          }
+
+          document.querySelectorAll('#page-length-option tbody tr').forEach(function (tr) {
+            var cb = tr.querySelector('.cv-checkbox');
+            if (cb && selectedUserIds.has(cb.dataset.userid)) {
+              tr.classList.add('row-selected');
+            } else {
+              tr.classList.remove('row-selected');
+            }
+          });
+        }
+
+        document.addEventListener('change', function (e) {
+          if (!e.target.classList.contains('cv-checkbox')) return;
+          var userId = e.target.dataset.userid;
+          if (e.target.checked) {
+            if (selectedUserIds.size >= MAX_CV_LIMIT) {
+              e.target.checked = false;
+              M.toast({ html: 'Maximum ' + MAX_CV_LIMIT + ' CVs can be selected.', classes: 'red' });
+              return;
+            }
+            selectedUserIds.add(userId);
+          } else {
+            selectedUserIds.delete(userId);
+          }
+          updateSelectionUI();
+          syncSelectAllState();
+        });
+
+        document.getElementById('selectAllCv').addEventListener('change', function () {
+          var visibleCbs = getVisibleCheckboxes();
+          if (this.checked) {
+            visibleCbs.forEach(function (cb) {
+              if (selectedUserIds.size < MAX_CV_LIMIT) {
+                cb.checked = true;
+                selectedUserIds.add(cb.dataset.userid);
+              }
+            });
+          } else {
+            visibleCbs.forEach(function (cb) {
+              cb.checked = false;
+              selectedUserIds.delete(cb.dataset.userid);
+            });
+          }
+          updateSelectionUI();
+        });
+
+        function getVisibleCheckboxes() {
+          return Array.from(document.querySelectorAll('#page-length-option tbody tr'))
+            .filter(function (tr) { return tr.style.display !== 'none'; })
+            .map(function (tr) { return tr.querySelector('.cv-checkbox'); })
+            .filter(Boolean);
+        }
+
+        function restoreCheckboxStates() {
+          document.querySelectorAll('.cv-checkbox').forEach(function (cb) {
+            cb.checked = selectedUserIds.has(cb.dataset.userid);
+            cb.disabled = (selectedUserIds.size >= MAX_CV_LIMIT && !cb.checked);
+          });
+          syncSelectAllState();
+          updateSelectionUI();
+        }
+
+        function syncSelectAllState() {
+          var visibleCbs = getVisibleCheckboxes();
+          var checkedVisible = visibleCbs.filter(function (cb) { return cb.checked; });
+          var sa = document.getElementById('selectAllCv');
+          if (checkedVisible.length === 0) {
+            sa.indeterminate = false; sa.checked = false;
+          } else if (checkedVisible.length === visibleCbs.length) {
+            sa.indeterminate = false; sa.checked = true;
+          } else {
+            sa.indeterminate = true;
+          }
+        }
+
+        function clearAllSelections() {
+          selectedUserIds.clear();
+          document.querySelectorAll('.cv-checkbox').forEach(function (cb) { cb.checked = false; cb.disabled = false; });
+          var sa = document.getElementById('selectAllCv');
+          sa.checked = false; sa.indeterminate = false;
+          updateSelectionUI();
+        }
+
+        function downloadSelectedCVs() {
+          if (selectedUserIds.size === 0) return;
+          var ids = Array.from(selectedUserIds);
+
+          document.getElementById('dlOverlay').classList.add('show');
+          document.getElementById('dlMsg').textContent = ids.length + ' CV(s) being zipped...';
+
+          var form = document.createElement('form');
+          form.method = 'POST';
+          form.action = '/user/download-selected-cvs';
+          form.style.display = 'none';
+
+          var input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'userIds';
+          input.value = JSON.stringify(ids);
+          form.appendChild(input);
+          document.body.appendChild(form);
+
+          setTimeout(function () { document.getElementById('dlOverlay').classList.remove('show'); }, 5000);
+          form.submit();
+        }
+
+        // ══════════════════════════════════════════
+        // LOAD MORE / BACKGROUND INFINITE LOAD
+        // (uses DataTable's own row.add() API → styling stays intact)
+        // ══════════════════════════════════════════
+        var currentLoadPage = 1;
+        var hasMoreUsers = <%= typeof hasMore !== 'undefined' ? hasMore : false %>;
+        var isLoadingMore = false;
+        var userRowCounter = <%= users.length %>;
+        var userTableInstance = null; // set after DataTable init in $(document).ready
+
+        // RBAC flags for building action buttons in AJAX-loaded rows
+        var CAN_EDIT_CANDIDATES = <%= (typeof can === 'function' && can('candidates', 'edit')) ? 'true' : 'false' %>;
+        var IS_SUPER_ADMIN = <%= (typeof isSuperAdmin !== 'undefined' && isSuperAdmin) ? 'true' : 'false' %>;
+
+        function escapeHtml(str) {
+          if (!str) return '';
+          return str.toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        function buildUserRowArray(user, srNo) {
+          var email = (user.email && user.email.indexOf('cv.') === 0 && user.email.indexOf('@cv-upload.com') > -1)
+            ? '—' : (user.email || '—');
+
+          var jobTitleHtml = '—';
+          if (user.jobTitle && Array.isArray(user.jobTitle) && user.jobTitle.length > 0) {
+            jobTitleHtml = user.jobTitle.map(function (x) { return escapeHtml(x.name); }).join(', ');
+          } else if (user.cvJobTitles && Array.isArray(user.cvJobTitles) && user.cvJobTitles.length > 0) {
+            jobTitleHtml = user.cvJobTitles.map(escapeHtml).join(', ');
+          }
+
+          var expHtml = '—';
+          if (user.experience) {
+            var expStr = user.experience.toString();
+            if (expStr.trim() === 'Fresher') expHtml = 'Fresher';
+            else if (/year/i.test(expStr)) expHtml = escapeHtml(expStr);
+            else expHtml = escapeHtml(expStr) + ' Year';
+          }
+
+          var resumeHtml = (user.resumes && user.resumes.length > 0)
+            ? '<span class="status-chip available">Available</span>'
+            : '<span class="status-chip pending">Pending</span>';
+
+          var checkboxHtml = '<input type="checkbox" class="cv-checkbox" data-userid="' + user._id + '" data-name="' + escapeHtml(user.name) + '">';
+
+          var actionHtml = '<div class="action-btns">' +
+            '<a href="/user/' + user._id + '" title="View"><i class="material-icons">remove_red_eye</i></a>' +
+            (CAN_EDIT_CANDIDATES ? ('<a href="/user/edit/' + user._id + '" title="Edit"><i class="material-icons">edit</i></a>') : '') +
+            (IS_SUPER_ADMIN ? ('<a href="/user/delete/' + user._id + '" class="del" title="Delete" onclick="return confirm(\'Are you sure want to delete this user?\')">' +
+              '<i class="material-icons">delete</i></a>') : '') +
+            '</div>';
+
+          // Order must match <thead> column order exactly
+          return [
+            checkboxHtml,
+            srNo,
+            escapeHtml(user.name),
+            escapeHtml(email),
+            escapeHtml(user.phone) || '—',
+            escapeHtml(user.city) || '—',
+            jobTitleHtml,
+            expHtml,
+            resumeHtml,
+            actionHtml
+          ];
+        }
+
+        function loadMoreUsersBackground() {
+          if (isLoadingMore || !hasMoreUsers) return;
+          isLoadingMore = true;
+
+          currentLoadPage++;
+          var params = new URLSearchParams(window.location.search);
+          params.set('page', currentLoadPage);
+
+          fetch('/user?' + params.toString(), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+          })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+              data.users.forEach(function (u) {
+                userRowCounter++;
+                var rowArray = buildUserRowArray(u, userRowCounter);
+                if (userTableInstance) {
+                  userTableInstance.row.add(rowArray);
+                }
+              });
+
+              // Redraw without changing current page/search/sort state
+              if (userTableInstance) {
+                userTableInstance.draw(false);
+              }
+
+              hasMoreUsers = data.hasMore;
+              restoreCheckboxStates();
+
+              console.log('Loaded page', currentLoadPage, '| Total rows now:', userRowCounter, '| hasMore:', hasMoreUsers);
+
+              isLoadingMore = false;
+
+              if (hasMoreUsers) {
+                setTimeout(loadMoreUsersBackground, 400);
+              }
+            })
+            .catch(function (e) {
+              console.error('Load more failed', e);
+              isLoadingMore = false;
+            });
+        }
+
+        // ══════════════════════════════════════════
+        // INIT
+        // ══════════════════════════════════════════
+        $(document).ready(function () {
+          $('.modal').modal();
+
+          // Agar already initialized hai (savePageLength.ejs se), to usi instance ko use karo
+          if ($.fn.DataTable.isDataTable('#page-length-option')) {
+            userTableInstance = $('#page-length-option').DataTable(); // existing instance le lo, dobara init nahi
+          } else {
+            userTableInstance = $('#page-length-option').DataTable({
+              paging: true,
+              lengthChange: true,
+              searching: true,
+              ordering: true,
+              info: true,
+              autoWidth: false,
+              columnDefs: [
+                { orderable: false, targets: [0, 9] }
+              ]
+            });
+          }
+
+          // Restore checkbox state on every redraw
+          userTableInstance.on('draw.dt', function () {
+            restoreCheckboxStates();
+          });
+
+          restoreCheckboxStates();
+
+          if (hasMoreUsers) {
+            setTimeout(loadMoreUsersBackground, 800);
+          }
+        });
+
+
+
+      </script>
+
+      <script src="/app-assets/vendors/data-tables/js/jquery.dataTables.min.js"></script>
+      <%- include('_layouts/savePageLength') %>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/Dropify/0.2.2/js/dropify.min.js"></script>
+        <script src="/app-assets/js/scripts/form-file-uploads.min.js"></script>
+
+        <!-- ══ CSV Import Modal ══ -->
+        <div id="csvImportModal" style="
+  display:none; position:fixed; inset:0;
+  background:rgba(30,20,60,0.55); z-index:9999;
+  align-items:center; justify-content:center;
+  backdrop-filter:blur(2px);">
+          <div style="
+    background:#fff; border-radius:14px;
+    padding:30px 36px; min-width:340px; max-width:480px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.2);">
+
+            <h5 style="margin:0 0 6px; color:#333; font-size:17px; font-weight:600;">
+              Import Users from CSV
+            </h5>
+            <p style="font-size:12.5px; color:#888; margin-bottom:18px;">
+              CSV must have headers: <code>Name, Email, Phone, Experience, City, Country, Job Title, Skills</code><br>
+              Skills = comma separated &nbsp;|&nbsp; Job Title = pipe separated
+            </p>
+
+            <form action="/user/import-csv" method="POST" enctype="multipart/form-data">
+              <div style="
+        border:2px dashed #d1c4e9; border-radius:10px;
+        padding:20px; text-align:center; margin-bottom:16px;
+        background:#faf8ff; cursor:pointer;" onclick="document.getElementById('csvFileInput').click()">
+                <i class="material-icons" style="font-size:36px; color:#b39ddb;">upload_file</i>
+                <p style="margin:6px 0 0; color:#888; font-size:13px;" id="csvFileName">
+                  Click to select CSV file
+                </p>
+                <input type="file" id="csvFileInput" name="csvFile" accept=".csv" style="display:none"
+                  onchange="document.getElementById('csvFileName').textContent = this.files[0]?.name || 'Click to select CSV file'">
+              </div>
+
+              <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button type="button" onclick="document.getElementById('csvImportModal').style.display='none'" style="
+            padding:8px 18px; border:1.5px solid #e0e0e0;
+            border-radius:7px; background:#f5f5f5;
+            color:#777; cursor:pointer; font-size:13px;">
+                  Cancel
+                </button>
+                <button type="submit" style="
+            padding:8px 20px; background:#7c4dff;
+            color:#fff; border:none; border-radius:7px;
+            font-size:13px; font-weight:500; cursor:pointer;">
+                  <i class="material-icons" style="font-size:16px; vertical-align:middle;">upload</i>
+                  Import
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+</body>
+
+</html>

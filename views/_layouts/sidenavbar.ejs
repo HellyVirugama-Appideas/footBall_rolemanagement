@@ -1,0 +1,227 @@
+<!-- BEGIN: Header -->
+<header class="page-topbar" id="header" style="margin-top: -22px;">
+    <div class="navbar navbar-fixed">
+        <nav class="navbar-main navbar-color nav-collapsible sideNav-lock navbar-light">
+            <div class="nav-wrapper">
+                <ul class="navbar-list right">
+                    <li>
+                        <a class="waves-effect waves-block waves-light profile-button" href="javascript:void(0);"
+                            data-target="profile-dropdown">
+                            <span class="avatar-status">
+                                <% if (typeof photo !== 'undefined') { %>
+                                    <img src="<%= photo %>" alt="avatar"
+                                        onerror="this.onerror=null; this.src='/uploads/default_user.jpg';">
+                                <% } else { %>
+                                    <img src="/uploads/default_user.jpg" alt="avatar">
+                                <% } %>
+                            </span>
+                        </a>
+                    </li>
+                </ul>
+                <ul class="dropdown-content" id="profile-dropdown">
+                    <li><a class="grey-text text-darken-1" href="/profile"><i class="material-icons">person_outline</i>Profile</a></li>
+                    <li><a class="grey-text text-darken-1" href="/changepass"><i class="material-icons">lock_outline</i>Change Password</a></li>
+                    <li><a class="grey-text text-darken-1" href="/logout" onclick="return confirm('Are you sure?');"><i class="material-icons">keyboard_tab</i>Logout</a></li>
+                </ul>
+            </div>
+        </nav>
+    </div>
+</header>
+<!-- END: Header-->
+
+<!-- BEGIN: SideNav-->
+<aside class="sidenav-main nav-expanded nav-lock nav-collapsible sidenav-dark sidenav-active-rounded">
+    <div class="brand-sidebar" style="background: white;">
+        <h1 class="logo-wrapper">
+            <a class="brand-logo darken-1" href="/">
+                <img class="hide-on-med-and-down" src="/app-assets/images/logo/logo.png" alt="logo">
+            </a>
+        </h1>
+    </div>
+
+    <ul class="sidenav sidenav-collapsible leftside-navigation collapsible sidenav-fixed menu-shadow" id="slide-out"
+        data-menu="menu-navigation" data-collapsible="accordion">
+
+        <!-- ==================== DEBUG SCRIPT ==================== -->
+        <script>
+            console.log("=== DEBUG PERMISSION CHECK ===");
+            console.log("isSuperAdmin:", <%= isSuperAdmin ? 'true' : 'false' %>);
+            console.log("Can users.view?", <%= typeof can === 'function' ? can('users', 'view') : false %>);
+            console.log("Can candidates.view?", <%= typeof can === 'function' ? can('candidates', 'view') : false %>);
+            console.log("Role Data:", <%- JSON.stringify(currentAdmin?.role || null) %>);
+        </script>
+        <!-- ==================== DEBUG SCRIPT END ==================== -->
+
+        <li class="bold <%= url == '/' ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan <%= url == '/' ? 'active' : '' %>" href="/">
+                <i class="material-icons">desktop_windows</i>
+                <span class="menu-title">Dashboard</span>
+            </a>
+        </li>
+
+        <li class="navigation-header">
+            <a class="navigation-header-text">manage</a>
+            <i class="navigation-header-icon material-icons">more_horiz</i>
+        </li>
+
+        <% if (typeof can !== 'function' || can('cms', 'view')) { %>
+        <li class="bold <%= url.startsWith('/cms') ? 'active' : '' %>">
+            <a class="collapsible-header waves-effect waves-cyan" href="javascript:void(0);">
+                <i class="material-icons">content_paste</i>
+                <span class="menu-title">Content Pages</span>
+            </a>
+            <div class="collapsible-body">
+                <ul class="collapsible collapsible-sub" data-collapsible="accordion">
+                    <li><a href="/cms/whoWeAre">Who We Are</a></li>
+                    <li><a href="/cms/privacy">Privacy notice</a></li>
+                    <li><a href="/cms/terms">Terms & Conditions</a></li>
+                </ul>
+            </div>
+        </li>
+        <% } %>
+
+        <% if (typeof can !== 'function' || can('banners', 'view')) { %>
+        <li class="bold <%= url.startsWith('/banner') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/banner">
+                <i class="material-icons">collections</i>
+                <span class="menu-title">Banners</span>
+            </a>
+        </li>
+        <% } %>
+
+        <% if (typeof can !== 'function' || can('recruiters', 'view')) { %>
+        <li class="bold <%= url.startsWith('/recruiter') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/recruiter">
+                <i class="material-icons">add_circle_outline</i>
+                <span class="menu-title">Recruiter</span>
+            </a>
+        </li>
+        <% } %>
+
+        <% if (typeof can !== 'function' || can('categories', 'view')) { %>
+        <li class="bold <%= url.startsWith('/category') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/category">
+                <i class="material-icons">view_week</i>
+                <span class="menu-title">Categories</span>
+            </a>
+        </li>
+        <% } %>
+
+        <% if (typeof can !== 'function' || can('jobs', 'view')) { %>
+        <li class="bold <%= url.startsWith('/job') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/job">
+                <i class="material-icons">assignment</i>
+                <span class="menu-title">Vacancies</span>
+            </a>
+        </li>
+        <% } %>
+
+        <% if (typeof can !== 'function' || can('jobTitles', 'view')) { %>
+        <li class="bold <%= url.startsWith('/title') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/title">
+                <i class="material-icons">title</i>
+                <span class="menu-title">Job Title</span>
+            </a>
+        </li>
+        <% } %>
+
+        <% if (typeof can !== 'function' || can('jobSkills', 'view')) { %>
+        <li class="bold <%= url.startsWith('/skill') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/skill">
+                <i class="material-icons">star</i>
+                <span class="menu-title">Job Skill</span>
+            </a>
+        </li>
+        <% } %>
+
+        <% if (typeof can !== 'function' || can('testimonials', 'view')) { %>
+        <li class="bold <%= url.startsWith('/testimonial') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/testimonial">
+                <i class="material-icons">picture_in_picture</i>
+                <span class="menu-title">Testimonial</span>
+            </a>
+        </li>
+        <% } %>
+
+        <% if (typeof can !== 'function' || can('newsletter', 'view')) { %>
+        <li class="bold <%= url.startsWith('/newsletter') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/newsletter">
+                <i class="material-icons">mail_outline</i>
+                <span class="menu-title">Newsletter</span>
+            </a>
+        </li>
+        <% } %>
+
+        <% if (typeof can !== 'function' || can('messages', 'view')) { %>
+        <li class="bold <%= url.startsWith('/message') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/message">
+                <i class="material-icons">contact_mail</i>
+                <span class="menu-title">User Messages</span>
+            </a>
+        </li>
+        <% } %>
+
+        <% if (typeof isSuperAdmin !== 'undefined' && isSuperAdmin) { %>
+        <li class="navigation-header">
+            <a class="navigation-header-text">Access Control</a>
+            <i class="navigation-header-icon material-icons">more_horiz</i>
+        </li>
+        <% if (typeof can === 'function' && can('roles', 'view')) { %>
+        <li class="bold <%= url.startsWith('/roles') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/roles">
+            <i class="material-icons">verified_user</i>
+                <span class="menu-title">Role Management</span>
+            </a>
+        </li>
+        <% } %>
+        <li class="bold <%= url.startsWith('/admins') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/admins">
+                <i class="material-icons">supervisor_account</i>
+                <span class="menu-title">Admin / Sub Admin</span>
+            </a>
+        </li>
+        <% } %>
+
+        <!-- User Management -->
+        <% if (typeof can === 'function' && can('users', 'view')) { %>
+        <li class="navigation-header">
+            <a class="navigation-header-text">Users</a>
+            <i class="navigation-header-icon material-icons">more_horiz</i>
+        </li>
+        <li class="bold <%= url.startsWith('/user') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/user">
+                <i class="material-icons">person</i>
+                <span class="menu-title">User Management</span>
+            </a>
+        </li>
+        <% } %>
+
+        <!-- CV System -->
+        <% if (typeof can === 'function' && (can('cvUpload', 'view') || can('cvSearch', 'view'))) { %>
+        <li class="navigation-header">
+            <a class="navigation-header-text">CV System</a>
+            <i class="navigation-header-icon material-icons">more_horiz</i>
+        </li>
+        <% if (typeof can === 'function' && can('cvUpload', 'view')) { %>
+        <li class="bold <%= url.startsWith('/cv-upload') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/cv-upload">
+                <i class="material-icons">cloud_upload</i>
+                <span class="menu-title">CV Uploads</span>
+            </a>
+        </li>
+        <% } %>
+        <% if (typeof can === 'function' && can('cvSearch', 'view')) { %>
+        <li class="bold <%= url.startsWith('/cv-search') ? 'active' : '' %>">
+            <a class="waves-effect waves-cyan" href="/cv-search">
+                <i class="material-icons">search</i>
+                <span class="menu-title">CV Search</span>
+            </a>
+        </li>
+        <% } %>
+        <% } %>
+
+    </ul>
+    <div class="navigation-background"></div>
+    <a class="sidenav-trigger btn-sidenav-toggle btn-floating btn-medium waves-effect waves-light hide-on-large-only"
+        href="#" data-target="slide-out"><i class="material-icons">menu</i></a>
+</aside>

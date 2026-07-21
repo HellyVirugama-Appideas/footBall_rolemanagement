@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html class="loading" lang="en" data-textdirection="ltr">
+<!-- BEGIN: Head-->
+
+<head>
+    <%- include('_layouts/head') %>
+    <title>Edit CV | <%= title %></title>
+</head>
+<!-- END: Head-->
+
+<body class="vertical-layout page-header-light vertical-menu-collapsible vertical-dark-menu preload-transitions 2-columns" data-open="click" data-menu="vertical-dark-menu" data-col="2-columns">
+    <%- include('_layouts/sidenavbar') %>
+
+    <!-- BEGIN: Page Main-->
+    <div id="main">
+        <div class="row">
+            <div id="breadcrumbs-wrapper" data-image="/app-assets/images/gallery/breadcrumb-bg.jpg">
+                <div class="container">
+                    <div class="row">
+                        <div class="col s12 m6 l6">
+                            <h5 class="breadcrumbs-title mt-0 mb-0"><a class="mr-2" href="/cv-view/<%= cv._id %>"><i class="material-icons">arrow_back</i></a><span>Edit CV</span></h5>
+                        </div>
+                        <div class="col s12 m6 l6 right-align-md">
+                            <ol class="breadcrumbs mb-0">
+                                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                                <li class="breadcrumb-item"><a href="/cv-search">CV Search</a></li>
+                                <li class="breadcrumb-item active">Edit</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col s12">
+                <div class="container">
+                    <div class="section">
+                        <div class="row">
+                            <div class="col s12">
+                                <div class="card">
+                                    <div class="card-content">
+                                        <div class="row">
+                                            <%- messages('messages', locals) %>
+
+                                            <% if (!isSuperAdmin) { %>
+                                            <div class="col s12">
+                                                <div class="card-panel amber lighten-4" style="padding:10px 15px;">
+                                                    <i class="material-icons left" style="vertical-align:middle;">info</i>
+                                                    You can only edit CVs within your assigned country/countries.
+                                                    Delete is available to the Super Admin only.
+                                                </div>
+                                            </div>
+                                            <% } %>
+
+                                            <form method="POST" action="/cv-edit/<%= cv._id %>" id="form">
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="Name" id="name" name="name" type="text" value="<%= cv.name || '' %>">
+                                                        <label for="name" class="active">Name</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="Email" id="email" name="email" type="email" value="<%= cv.email || '' %>">
+                                                        <label for="email" class="active">Email</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="Phone" id="phone" name="phone" type="text" value="<%= cv.phone || '' %>">
+                                                        <label for="phone" class="active">Phone</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="Experience" id="experience" name="experience" type="text" value="<%= cv.experience || '' %>">
+                                                        <label for="experience" class="active">Experience</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="City" id="city" name="city" type="text" value="<%= cv.city || '' %>">
+                                                        <label for="city" class="active">City</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="Country" id="country" name="country" type="text" value="<%= cv.country || '' %>" <%= isSuperAdmin ? '' : 'readonly' %>>
+                                                        <label for="country" class="active">Country</label>
+                                                        <% if (!isSuperAdmin) { %>
+                                                        <small class="grey-text">Locked to your assigned country</small>
+                                                        <% } %>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12">
+                                                    <div class="input-field">
+                                                        <input placeholder="Skills (comma separated)" id="skills" name="skills" type="text" value="<%= (cv.skills || []).join(', ') %>">
+                                                        <label for="skills" class="active">Skills (comma separated)</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12">
+                                                    <div class="input-field">
+                                                        <textarea placeholder="Summary" id="summary" name="summary" class="materialize-textarea"><%= cv.summary || '' %></textarea>
+                                                        <label for="summary" class="active">Summary</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12">
+                                                    <button type="submit" class="btn purple ml-1" id="submitBtn">Save Changes</button>
+                                                    <a href="/cv-view/<%= cv._id %>" class="btn grey">Cancel</a>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="content-overlay"></div>
+            </div>
+        </div>
+    </div>
+    <!-- END: Page Main-->
+
+    <%- include('_layouts/commonJs') %>
+</body>
+
+</html>

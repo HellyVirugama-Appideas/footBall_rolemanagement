@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html class="loading" lang="en" data-textdirection="ltr">
+<!-- BEGIN: Head-->
+
+<head>
+    <%- include('_layouts/head') %>
+    <title>Add Admin / Sub Admin | <%= title %></title>
+</head>
+<!-- END: Head-->
+
+<body class="vertical-layout page-header-light vertical-menu-collapsible vertical-dark-menu preload-transitions 2-columns" data-open="click" data-menu="vertical-dark-menu" data-col="2-columns">
+    <%- include('_layouts/sidenavbar') %>
+
+    <!-- BEGIN: Page Main-->
+    <div id="main">
+        <div class="row">
+            <div id="breadcrumbs-wrapper" data-image="/app-assets/images/gallery/breadcrumb-bg.jpg">
+                <div class="container">
+                    <div class="row">
+                        <div class="col s12 m6 l6">
+                            <h5 class="breadcrumbs-title mt-0 mb-0"><a class="mr-2" href="/admins"><i class="material-icons">arrow_back</i></a><span>Add Admin / Sub Admin</span></h5>
+                        </div>
+                        <div class="col s12 m6 l6 right-align-md">
+                            <ol class="breadcrumbs mb-0">
+                                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                                <li class="breadcrumb-item"><a href="/admins">Admins</a></li>
+                                <li class="breadcrumb-item active">Add</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col s12">
+                <div class="container">
+                    <div class="section">
+                        <div class="row">
+                            <div class="col s12">
+                                <div class="card">
+                                    <div class="card-content">
+                                        <div class="row">
+                                            <%- messages('messages', locals) %>
+                                            <form method="POST" action="/admins/add" id="form">
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="Full Name" id="name" name="name" type="text" required>
+                                                        <label for="name">Full Name</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="Email" id="email" name="email" type="email" required>
+                                                        <label for="email">Email</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="Password" id="password" name="password" type="password" minlength="8" required>
+                                                        <label for="password">Password (min 8 characters)</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="Confirm Password" id="passwordConfirm" name="passwordConfirm" type="password" minlength="8" required>
+                                                        <label for="passwordConfirm">Confirm Password</label>
+                                                    </div>
+                                                </div>
+
+                                                <% if (typeof isSuperAdmin !== 'undefined' && isSuperAdmin) { %>
+                                                <div class="col s12">
+                                                    <label>
+                                                        <input type="checkbox" id="isSuperAdmin" name="isSuperAdmin" onchange="toggleSubAdminFields()">
+                                                        <span>Make this a Super Admin (full unrestricted access)</span>
+                                                    </label>
+                                                </div>
+                                                <% } %>
+
+                                                <div id="subAdminFields">
+                                                    <div class="col s12 m6">
+                                                        <div class="input-field">
+                                                            <select id="role" name="role">
+                                                                <option value="" disabled selected>Select a role</option>
+                                                                <% roles.forEach(function(r) { %>
+                                                                <option value="<%= r._id %>"><%= r.name %></option>
+                                                                <% }); %>
+                                                            </select>
+                                                            <label>Role</label>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col s12 m6">
+                                                        <div class="input-field">
+                                                            <input placeholder="e.g. France, Germany" id="countries" name="countries" type="text">
+                                                            <label for="countries">Assigned Countries (comma separated)</label>
+                                                            <small class="grey-text">This Sub Admin will only see candidates/CVs from these countries. Leave blank = sees nothing until assigned.</small>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <select id="status" name="status">
+                                                            <option value="active" selected>Active</option>
+                                                            <option value="inactive">Inactive</option>
+                                                        </select>
+                                                        <label>Status</label>
+                                                    </div>
+                                                </div>
+
+                                                <div class="col s12" style="margin-top:10px;">
+                                                    <button type="submit" class="btn purple ml-1" id="submitBtn">Create</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="content-overlay"></div>
+            </div>
+        </div>
+    </div>
+    <!-- END: Page Main-->
+
+    <script>
+        function toggleSubAdminFields() {
+            var isSuper = document.getElementById('isSuperAdmin') && document.getElementById('isSuperAdmin').checked;
+            document.getElementById('subAdminFields').style.display = isSuper ? 'none' : '';
+        }
+    </script>
+    <%- include('_layouts/commonJs') %>
+    <script>
+        // Materialize selects need re-init after DOM ready in this template set
+        document.addEventListener('DOMContentLoaded', function () {
+            if (window.M && M.FormSelect) M.FormSelect.init(document.querySelectorAll('select'));
+        });
+    </script>
+</body>
+
+</html>

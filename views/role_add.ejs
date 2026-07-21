@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html class="loading" lang="en" data-textdirection="ltr">
+<head>
+    <%- include('_layouts/head') %>
+    <title>Add Role | <%= title || 'Add Role' %></title>
+    <style>
+        .perm-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .perm-table th, .perm-table td {
+            padding: 12px 10px;
+            border-bottom: 1px solid #ddd;
+            text-align: center;
+            vertical-align: middle;
+        }
+        .perm-table th:first-child, .perm-table td:first-child {
+            text-align: left;
+        }
+        .perm-table thead th {
+            background: #f3e5f5;
+            color: #444;
+            font-weight: 500;
+        }
+        .perm-note {
+            font-size: 13px;
+            color: #555;
+            margin: 10px 0 15px;
+        }
+    </style>
+</head>
+<body class="vertical-layout page-header-light vertical-menu-collapsible vertical-dark-menu preload-transitions 2-columns" data-open="click" data-menu="vertical-dark-menu" data-col="2-columns">
+    
+    <%- include('_layouts/sidenavbar') %>
+
+    <div id="main">
+        <div class="row">
+            <div id="breadcrumbs-wrapper" data-image="/app-assets/images/gallery/breadcrumb-bg.jpg">
+                <div class="container">
+                    <div class="row">
+                        <div class="col s12 m6 l6">
+                            <h5 class="breadcrumbs-title mt-0 mb-0">
+                                <a class="mr-2" href="/roles"><i class="material-icons">arrow_back</i></a>
+                                <span>Add Role</span>
+                            </h5>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col s12">
+                <div class="container">
+                    <div class="section">
+                        <div class="row">
+                            <div class="col s12">
+                                <div class="card">
+                                    <div class="card-content">
+                                        <%- messages('messages', locals) %>
+
+                                        <!-- <div style="background:#fff3cd; padding:8px 12px; margin-bottom:15px; border-radius:4px;">
+                                            <strong>Modules Loaded:</strong> <%= modules ? modules.length : 0 %>
+                                        </div> -->
+
+                                        <form method="POST" action="/roles/add">
+                                            <div class="row">
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input id="name" name="name" type="text" required>
+                                                        <label for="name">Role Name (e.g. France Sub Admin)</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input id="description" name="description" type="text">
+                                                        <label for="description">Description</label>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col s12">
+                                                    <h6>Module-wise Permissions</h6>
+                                                    <p class="perm-note">Enable/Disable permissions for this role.</p>
+
+                                                    <div style="overflow-x:auto;">
+                                                        <table class="perm-table">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th width="35%">Module</th>
+                                                                    <th>View</th>
+                                                                    <th>Add</th>
+                                                                    <th>Edit</th>
+                                                                    <th>Delete</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                <% if (modules && modules.length > 0) { %>
+                                                                    <% modules.forEach(function(m) { %>
+                                                                    <tr>
+                                                                        <td><strong><%= m.label %></strong></td>
+                                                                        <td>
+                                                                            <div class="switch">
+                                                                                <label>
+                                                                                    <input type="checkbox" name="perm_<%= m.key %>_view">
+                                                                                    <span class="lever"></span>
+                                                                                </label>
+                                                                            </div>
+                                                                        </td>
+                                                                        <td>
+                                                                            <div class="switch">
+                                                                                <label>
+                                                                                    <input type="checkbox" name="perm_<%= m.key %>_add">
+                                                                                    <span class="lever"></span>
+                                                                                </label>
+                                                                            </div>
+                                                                        </td>
+                                                                        <td>
+                                                                            <div class="switch">
+                                                                                <label>
+                                                                                    <input type="checkbox" name="perm_<%= m.key %>_edit">
+                                                                                    <span class="lever"></span>
+                                                                                </label>
+                                                                            </div>
+                                                                        </td>
+                                                                        <td>
+                                                                            <% if (m.countryScoped === true) { %>
+                                                                                <div class="switch">
+                                                                                    <label>
+                                                                                        <input type="checkbox" disabled>
+                                                                                        <span class="lever"></span>
+                                                                                    </label>
+                                                                                </div>
+                                                                            <% } else { %>
+                                                                                <div class="switch">
+                                                                                    <label>
+                                                                                        <input type="checkbox" name="perm_<%= m.key %>_delete">
+                                                                                        <span class="lever"></span>
+                                                                                    </label>
+                                                                                </div>
+                                                                            <% } %>
+                                                                        </td>
+                                                                    </tr>
+                                                                    <% }); %>
+                                                                <% } else { %>
+                                                                    <tr>
+                                                                        <td colspan="5" class="center red-text" style="padding:40px;">
+                                                                            No modules found.
+                                                                        </td>
+                                                                    </tr>
+                                                                <% } %>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="row">
+                                                <div class="col s12">
+                                                    <button type="submit" class="btn purple">Create Role</button>
+                                                </div>
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <%- include('_layouts/commonJs') %>
+</body>
+</html>

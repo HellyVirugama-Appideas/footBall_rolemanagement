@@ -1,0 +1,49 @@
+ <%- include('_layouts/head') %>
+
+<div class="content-wrapper">
+    <div class="row">
+        <div class="col s12 m10 offset-m1">
+            <div class="card">
+                <div class="card-content">
+                    <span class="card-title teal-text">Bulk CV Upload</span>
+                    <p class="grey-text">Single CV file ya ZIP folder (2000+ CVs) upload kar sakte ho.<br>
+                    System sab files kholega, details padhega aur **User Management** mein automatically store kar dega.</p>
+
+                    <form action="/bulk-cv-upload" method="POST" enctype="multipart/form-data" class="mt-4">
+                        <div class="file-field input-field">
+                            <div class="btn teal">
+                                <span><i class="material-icons left">attach_file</i>Choose File / ZIP</span>
+                                <input type="file" name="cvFile" accept=".pdf,.doc,.docx,.zip" required>
+                            </div>
+                            <div class="file-path-wrapper">
+                                <input class="file-path validate" type="text" placeholder="Select PDF, DOC, DOCX or ZIP">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn waves-effect waves-light teal darken-2 btn-large">
+                            <i class="material-icons right">cloud_upload</i>
+                            Upload & Process CVs
+                        </button>
+                    </form>
+
+                    <div class="grey-text text-lighten-1 mt-4">
+                        <small>
+                            ✅ Supported formats: PDF, DOC, DOCX, ZIP<br>
+                            ✅ Max file size: 50MB<br>
+                            ✅ ZIP mein 500+ CVs bhi allowed (background processing)
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Flash Messages (success / error) -->
+<% if (typeof messages !== 'undefined' && messages.length > 0) { %>
+    <% messages.forEach(function(msg) { %>
+        <div class="card-panel <%= msg.type === 'green' ? 'green' : 'red' %> white-text">
+            <%= msg.message %>
+        </div>
+    <% }); %>
+<% } %>

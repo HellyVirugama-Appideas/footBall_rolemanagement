@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html class="loading" lang="en" data-textdirection="ltr">
+<!-- BEGIN: Head-->
+
+<head>
+    <%- include('_layouts/head') %>
+    <title>Edit Admin / Sub Admin | <%= title %></title>
+</head>
+<!-- END: Head-->
+
+<body class="vertical-layout page-header-light vertical-menu-collapsible vertical-dark-menu preload-transitions 2-columns" data-open="click" data-menu="vertical-dark-menu" data-col="2-columns">
+    <%- include('_layouts/sidenavbar') %>
+
+    <!-- BEGIN: Page Main-->
+    <div id="main">
+        <div class="row">
+            <div id="breadcrumbs-wrapper" data-image="/app-assets/images/gallery/breadcrumb-bg.jpg">
+                <div class="container">
+                    <div class="row">
+                        <div class="col s12 m6 l6">
+                            <h5 class="breadcrumbs-title mt-0 mb-0"><a class="mr-2" href="/admins"><i class="material-icons">arrow_back</i></a><span>Edit Admin / Sub Admin</span></h5>
+                        </div>
+                        <div class="col s12 m6 l6 right-align-md">
+                            <ol class="breadcrumbs mb-0">
+                                <li class="breadcrumb-item"><a href="/">Home</a></li>
+                                <li class="breadcrumb-item"><a href="/admins">Admins</a></li>
+                                <li class="breadcrumb-item active">Edit</li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col s12">
+                <div class="container">
+                    <div class="section">
+                        <div class="row">
+                            <div class="col s12">
+                                <div class="card">
+                                    <div class="card-content">
+                                        <div class="row">
+                                            <%- messages('messages', locals) %>
+                                            <form method="POST" action="/admins/edit/<%= editAdmin._id %>" id="form">
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="Full Name" id="name" name="name" type="text" value="<%= editAdmin.name %>" required>
+                                                        <label for="name" class="active">Full Name</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="Email" id="email" name="email" type="email" value="<%= editAdmin.email %>" required>
+                                                        <label for="email" class="active">Email</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="New Password (leave blank to keep current)" id="password" name="password" type="password" minlength="8">
+                                                        <label for="password">New Password (optional)</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="Confirm New Password" id="passwordConfirm" name="passwordConfirm" type="password" minlength="8">
+                                                        <label for="passwordConfirm">Confirm New Password</label>
+                                                    </div>
+                                                </div>
+
+                                                <% if (editAdmin.isSuperAdmin) { %>
+                                                <div class="col s12">
+                                                    <div class="card-panel indigo lighten-4">
+                                                        This account is a <b>Super Admin</b> — role and country restrictions don't apply.
+                                                    </div>
+                                                </div>
+                                                <% } else { %>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <select id="role" name="role" class="browser-default">
+                                                            <option value="" disabled>Select a role</option>
+                                                            <% roles.forEach(function(r) { %>
+                                                            <option value="<%= r._id %>" <%= (editAdmin.role && editAdmin.role.toString() === r._id.toString()) ? 'selected' : '' %>><%= r.name %></option>
+                                                            <% }); %>
+                                                        </select>
+                                                        <label class="active">Role</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <input placeholder="e.g. France, Germany" id="countries" name="countries" type="text" value="<%= (editAdmin.assignedCountries || []).join(', ') %>">
+                                                        <label for="countries" class="active">Assigned Countries (comma separated)</label>
+                                                    </div>
+                                                </div>
+                                                <% } %>
+
+                                                <div class="col s12 m6">
+                                                    <div class="input-field">
+                                                        <select id="status" name="status" class="browser-default">
+                                                            <option value="active" <%= editAdmin.status === 'active' ? 'selected' : '' %>>Active</option>
+                                                            <option value="inactive" <%= editAdmin.status === 'inactive' ? 'selected' : '' %>>Inactive</option>
+                                                        </select>
+                                                        <label class="active">Status</label>
+                                                    </div>
+                                                </div>
+
+                                                <div class="col s12" style="margin-top:10px;">
+                                                    <button type="submit" class="btn purple ml-1" id="submitBtn">Save Changes</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="content-overlay"></div>
+            </div>
+        </div>
+    </div>
+    <!-- END: Page Main-->
+
+    <%- include('_layouts/commonJs') %>
+</body>
+
+</html>

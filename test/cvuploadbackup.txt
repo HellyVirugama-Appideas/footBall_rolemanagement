@@ -1,0 +1,2026 @@
+// const fs = require('fs');
+// const path = require('path');
+// const multer = require('multer');
+
+// const CVUpload = require('../../models/cvUploadModel');
+// const User = require('../../models/userModel');
+
+// // ─────────────────────────────────────────
+// // MULTER CONFIG
+// // ─────────────────────────────────────────
+// const cvStorage = multer.diskStorage({
+//   destination: (req, file, cb) => {
+//     const dir = './public/uploads/cvs/';
+//     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+//     cb(null, dir);
+//   },
+//   filename: (req, file, cb) =>
+//     cb(null, Date.now() + '_' + file.originalname.replace(/\s+/g, '_')),
+// });
+
+// exports.cvUploader = multer({
+//   storage: cvStorage,
+//   limits: { fileSize: 1024 * 1024 * 200 },
+//   fileFilter: (req, file, cb) => {
+//     const ext = path.extname(file.originalname).toLowerCase();
+//     if (['.pdf', '.doc', '.docx', '.zip'].includes(ext)) {
+//       cb(null, true);
+//     } else {
+//       cb(new Error('Only PDF, DOC, DOCX, or ZIP files are allowed.'), false);
+//     }
+//   },
+// }).array('cvFiles', 2000);
+
+// // ─────────────────────────────────────────  
+// // TEXT EXTRACTION — PDF and DOCX
+// // ─────────────────────────────────────────
+// // Fix encoding issues (German/European chars)
+// function fixTextEncoding(text, buffer) {
+//   try {
+//     // If text has replacement chars (\ufffd), try re-decoding buffer
+//     if (text.includes('\ufffd') && buffer) {
+//       const chardet = require('chardet');
+//       const iconv   = require('iconv-lite');
+//       const detected = chardet.detect(buffer);
+//       if (detected && detected !== 'UTF-8') {
+//         const redecoded = iconv.decode(buffer, detected);
+//         if (!redecoded.includes('\ufffd')) {
+//           console.log('Re-decoded with:', detected);
+//           return redecoded;
+//         }
+//       }
+//       // Fallback: replace common mojibake patterns
+//       return text
+//         .replace(/Gro�k/g, 'Großk')
+//         .replace(/([a-zA-Z])�([a-zA-Z])/g, (m, a, b) => a + 'ß' + b)
+//         .replace(/�/g, '');
+//     }
+//     return text;
+//   } catch (e) {
+//     return text.replace(/�/g, '');
+//   }
+// }
+
+// async function extractTextFromPDF(filePath) {
+//   return new Promise((resolve) => {
+//     const timer = setTimeout(() => {
+//       console.log('pdf-parse timeout for:', filePath);
+//       resolve('');
+//     }, 15000);
+//     try {
+//       const pdfParse = require('pdf-parse');
+//       const buffer = fs.readFileSync(filePath);
+//       pdfParse(buffer)
+//         .then((data) => {
+//           clearTimeout(timer);
+//           let text = (data.text || '').trim();
+//           text = fixTextEncoding(text, buffer);
+//           console.log('PDF extracted chars:', text.length, 'from', path.basename(filePath));
+//           resolve(text);
+//         })
+//         .catch((e) => {
+//           clearTimeout(timer);
+//           console.log('pdf-parse error:', e.message);
+//           resolve('');
+//         });
+//     } catch (e) {
+//       clearTimeout(timer);
+//       console.log('pdf-parse require error:', e.message);
+//       resolve('');
+//     }
+//   });
+// }
+
+// async function extractTextFromDOCX(filePath) {
+//   try {
+//     const mammoth = require('mammoth');
+//     const buffer  = fs.readFileSync(filePath);
+//     const result  = await mammoth.extractRawText({ buffer });
+//     let text = (result.value || '').trim();
+//     text = fixTextEncoding(text, buffer);
+//     console.log('DOCX extracted chars:', text.length, 'from', path.basename(filePath));
+//     return text;
+//   } catch (e) {
+//     console.log('mammoth error:', e.message);
+//     return '';
+//   }
+// }
+
+// // ─────────────────────────────────────────
+// // PARSE CV TEXT — Gemini AI + Smart Local Fallback
+// // ─────────────────────────────────────────
+
+// // ── Smart local parser (used as fallback AND to fill gaps) ──
+// function localParse(text) {
+//   if (!text) return {};
+//   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+//   // ── Email ──
+//   const emailM = text.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+//   const email = emailM ? emailM[0].toLowerCase() : '';
+
+//   // ── Phone: look for explicit label first, then patterns ──
+//   let phone = '';
+//   const phoneLabelM = text.match(/(?:phone|tel(?:efon)?|mobile|mob|cell|handy|kontakt)[.\s:]+([+\d][\d\s\-()\/\.]{5,20}\d)/i);
+//   if (phoneLabelM) {
+//     phone = phoneLabelM[1].trim();
+//   } else {
+//     // Pattern: +49 176 12345678, 0176-12345678, (089) 123456
+//     const phoneM = text.match(/(?<!\d)(\+\d{1,3}[\s\-]?\(?\d{1,5}\)?[\s\-]?\d{2,5}[\s\-]?\d{2,8})(?!\d)/);
+//     if (phoneM) phone = phoneM[1].trim();
+//   }
+
+//   // ── Name: first meaningful line at top ──
+//   const skipLine = /^(curriculum|resume|cv |page |tel|phone|email|address|date|summary|objective|profile|experience|education|skills|about|references|professional|personal|key |languages|certif|linkedin|http|www\.)/i;
+//   let name = '';
+//   for (const line of lines.slice(0, 15)) {
+//     if (line.length < 2 || line.length > 70) continue;
+//     if (line.includes('@') || line.includes('http') || line.includes('|')) continue;
+//     if (line.match(/^\d/) || skipLine.test(line)) continue;
+//     if (line.match(/[A-Za-z\u00c0-\u024f]{2,}/)) {
+//       // CamelCase fix: "JohnSmith" → "John Smith"
+//       name = line.replace(/([a-z\u00e0-\u00ff])([A-Z\u00c0-\u00df])/g, '$1 $2').trim();
+//       // Remove city/location that got merged (take first 2-3 words only if >4 words)
+//       const words = name.split(/\s+/);
+//       if (words.length > 4) name = words.slice(0, 3).join(' ');
+//       break;
+//     }
+//   }
+
+//   // ── City: multiple strategies ──
+//   let city = '';
+//   // Strategy 1: explicit label
+//   const cityLabelM = text.match(/(?:location|city|based in|address|residing|ort)[.\s:]+([A-Za-z\u00c0-\u024f][A-Za-z\u00c0-\u024f\s,\-]{2,50}?)(?:\n|$|,\s*[A-Z]{2,}|\|)/i);
+//   if (cityLabelM) city = cityLabelM[1].split(',')[0].trim();
+
+//   // Strategy 2: "City, Country" or "City, Region, Country" in first 6 lines
+//   if (!city) {
+//     for (const line of lines.slice(0, 6)) {
+//       if (line.includes('@') || line.includes('http') || line.includes('linkedin')) continue;
+//       const pipeFirst = line.split('|')[0].trim();
+//       // If line has a comma and looks like a location (not a job title)
+//       if (pipeFirst.includes(',') && pipeFirst.match(/^[A-Za-z\u00c0-\u024f]/) && pipeFirst.length < 100) {
+//         const beforeComma = pipeFirst.split(',')[0].trim();
+//         // Must be a real city: letters only, 2-40 chars, not a known skip word
+//         if (beforeComma.length >= 2 && beforeComma.length <= 40 &&
+//             beforeComma.match(/^[A-Za-z\u00c0-\u024f][\w\s\u00c0-\u024f\-]*$/) &&
+//             !beforeComma.match(/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i)) {
+//           city = beforeComma;
+//           break;
+//         }
+//       }
+//     }
+//   }
+
+//   // Strategy 3: pipe-separated header "Name | City | email"
+//   if (!city) {
+//     const firstLine = lines[0] || '';
+//     const parts = firstLine.split('|').map(p => p.trim());
+//     for (const p of parts.slice(1)) {
+//       if (!p.includes('@') && !p.includes('http') && p.match(/[A-Za-z]/) && p.length < 80) {
+//         const candidate = p.split(',')[0].trim();
+//         if (candidate.length > 1 && !candidate.match(/^\d/)) { city = candidate; break; }
+//       }
+//     }
+//   }
+
+//   // ── Skills: parse pipe-separated, comma-separated, bullet lists ──
+//   const skills = new Set();
+//   // Find skills section
+//   const skillsSectionM = text.match(/(?:key\s+skills?|skills?|competencies|expertise|technologies)[:\s\n]+([\s\S]{10,500}?)(?=\n\s*\n|\n\s*(?:education|experience|employment|references|languages|certif|awards|$))/i);
+//   const skillsText = skillsSectionM ? skillsSectionM[1] : text;
+
+//   // Parse pipe-separated: "Skill1 | Skill2 | Skill3"
+//   skillsText.split('|').forEach(s => {
+//     const clean = s.replace(/[\n\r]/g, ' ').trim();
+//     if (clean.length > 2 && clean.length < 60 && clean.match(/[A-Za-z]{2,}/) && !clean.match(/^\d/)) {
+//       skills.add(clean);
+//     }
+//   });
+//   // Parse newline/bullet/comma separated
+//   skillsText.split(/[\n,•\*]/).forEach(s => {
+//     const clean = s.replace(/^[\s\-–]+/, '').trim();
+//     if (clean.length > 2 && clean.length < 60 && clean.match(/[A-Za-z]{2,}/) && !clean.match(/^\d{4}/)) {
+//       skills.add(clean);
+//     }
+//   });
+//   // Remove lines that are clearly not skills
+//   const badSkill = /^(skills?|competencies|expertise|key|and|the|with|for|or|in|to|of)$/i;
+//   const skillsArr = [...skills].filter(s => !badSkill.test(s)).slice(0, 15);
+
+//   // ── Job Titles ──
+//   const titleKeywords = ['coach','manager','director','scout','analyst','recruiter','developer',
+//     'engineer','designer','consultant','advisor','trainer','coordinator','executive','officer',
+//     'therapist','instructor','physiotherapist','scientist','specialist','head of','assistant'];
+//   const foundTitles = [];
+//   lines.forEach(line => {
+//     titleKeywords.forEach(t => {
+//       if (new RegExp('\\b' + t + '\\b', 'i').test(line) && line.length < 80) {
+//         const clean = line.replace(/[|•\-–*]/g, '').trim().slice(0, 60);
+//         if (!foundTitles.includes(clean)) foundTitles.push(clean);
+//       }
+//     });
+//   });
+
+//   // ── Experience ──
+//   let experienceYears = 0;
+//   const directExpM = text.match(/(\d+)\s*\+?\s*(years?|yrs?)\s*(of\s+)?(experience|exp\.?|work)/i);
+//   if (directExpM) {
+//     experienceYears = parseInt(directExpM[1]);
+//   } else {
+//     const currentYear = new Date().getFullYear();
+//     // Get experience section only (not education)
+//     const expSectionM = text.match(/(?:professional\s+)?experience[:\s]*\n([\s\S]*?)(?=\n\s*(?:education|skills|languages|references|certif|awards|interests|$))/i);
+//     const expText = expSectionM ? expSectionM[1] : text.replace(/education[\s\S]*?(experience|$)/i, '');
+//     const allYears = (expText.match(/\b(19[7-9]\d|20[0-2]\d)\b/g) || []).map(Number).filter(y => y <= currentYear);
+//     if (allYears.length > 0) experienceYears = currentYear - Math.min(...allYears);
+//   }
+//   const experience = experienceYears > 0 ? experienceYears + ' Year' + (experienceYears !== 1 ? 's' : '') : 'Fresher';
+
+//   // ── Summary ──
+//   let summary = '';
+//   const summaryM = text.match(/(?:professional\s+summary|summary|objective|profile|about\s+me)[:\s\n]+([\s\S]{30,500}?)(?=\n\s*\n|\n\s*(?:experience|education|skills|$))/i);
+//   if (summaryM) summary = summaryM[1].replace(/\s+/g, ' ').trim().slice(0, 300);
+
+//   return { name, email, phone, city, experience, experienceYears, skills: skillsArr, jobTitles: foundTitles.slice(0, 5), summary };
+// }
+
+// // ── Gemini AI parser (primary) ──
+// async function parseCVWithAI(text, originalFileName) {
+//   if (!text || text.trim().length < 30) {
+//     return buildResult(localParse(''), originalFileName);
+//   }
+
+//   const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+//   // Run local parser always — fills gaps when AI misses something
+//   const local = localParse(text);
+
+//   if (!GEMINI_API_KEY) {
+//     console.log('No GEMINI_API_KEY — using local parser');
+//     return buildResult(local, originalFileName);
+//   }
+
+//   try {
+//     const { GoogleGenAI } = require('@google/genai');
+//     const currentYear = new Date().getFullYear();
+
+//     const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+//     const prompt = `You are an expert CV/Resume parser. Read this CV and return ONLY a JSON object, no markdown, no explanation.
+
+// JSON format:
+// {"name":"","email":"","phone":"","city":"","experience":"X Years or Fresher","experienceYears":0,"skills":[],"jobTitles":[],"summary":""}
+
+// Rules:
+// 1. name: person's full name from top of CV only
+// 2. email: email address
+// 3. phone: any phone/mobile/tel number including country code like +49, +44
+// 4. city: city or region name ONLY — never email, never URL, never LinkedIn
+// 5. experience: work years only (not education). Calculate from earliest job year to ${currentYear}
+// 6. experienceYears: integer
+// 7. skills: extract ALL skills — pipe-separated "Skill1 | Skill2", bullets, lists, comma-separated — max 15
+// 8. jobTitles: job roles/titles — max 5
+// 9. summary: professional summary paragraph — max 300 chars
+
+// CV TEXT:
+// ${text.slice(0, 4000)}`;
+
+//     const response = await genAI.models.generateContent({
+//       model: 'gemini-2.5-flash',
+//       contents: prompt,
+//       config: { temperature: 0.1, maxOutputTokens: 1000 },
+//     });
+
+//     const aiText = response.text || '';
+//     if (!aiText) return buildResult(local, originalFileName);
+
+//     const jsonStr = aiText.replace(/[`]{3}json\n?/g, '').replace(/[`]{3}\n?/g, '').trim();
+//     const ai = JSON.parse(jsonStr);
+
+//     // MERGE: AI result + local fallback (use whichever has better data per field)
+//     const merged = {
+//       name:            pick(ai.name, local.name),
+//       email:           pick(ai.email, local.email),
+//       phone:           pick(ai.phone, local.phone),
+//       city:            pick(ai.city, local.city),
+//       experience:      pick(ai.experience, local.experience) || 'Fresher',
+//       experienceYears: parseInt(ai.experienceYears) || local.experienceYears || 0,
+//       skills:          mergeArrays(ai.skills, local.skills, 15),
+//       jobTitles:       mergeArrays(ai.jobTitles, local.jobTitles, 5),
+//       summary:         pick(ai.summary, local.summary),
+//     };
+//     console.log('AI parsed:', merged.name, '| city:', merged.city, '| phone:', merged.phone, '| skills:', merged.skills.length, '| exp:', merged.experience);
+//     return buildResult(merged, originalFileName);
+
+//   } catch (e) {
+//     console.log('Gemini parse error:', e.message, '— using local parser');
+//     return buildResult(local, originalFileName);
+//   }
+// }
+
+// // pick: return first non-empty value
+// function pick(...vals) {
+//   for (const v of vals) {
+//     if (v && typeof v === 'string' && v.trim() && v.trim() !== 'Fresher') return v.toString().trim();
+//   }
+//   return vals[vals.length - 1] || '';
+// }
+
+// function mergeArrays(a, b, max) {
+//   const combined = [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])];
+//   const unique = [...new Set(combined.map(s => s.toString().trim()).filter(Boolean))];
+//   return unique.slice(0, max);
+// }
+
+// function buildResult(data, originalFileName) {
+//   return {
+//     name:            (data.name || '').toString().trim().slice(0, 100),
+//     email:           (data.email || '').toString().toLowerCase().trim(),
+//     phone:           (data.phone || '').toString().trim(),
+//     city:            (data.city || '').toString().trim().slice(0, 100),
+//     experience:      (data.experience || 'Fresher').toString().trim(),
+//     experienceYears: parseInt(data.experienceYears) || 0,
+//     skills:          Array.isArray(data.skills) ? data.skills.slice(0, 15) : [],
+//     jobTitles:       Array.isArray(data.jobTitles) ? data.jobTitles.slice(0, 5) : [],
+//     summary:         (data.summary || '').toString().trim().slice(0, 300),
+//   };
+// }
+
+// // ─────────────────────────────────────────
+// // PROCESS SINGLE CV
+// // ─────────────────────────────────────────
+// async function processSingleCV(filePath, originalName, batchId) {
+//   const ext = path.extname(originalName).toLowerCase();
+//   let rawText = '';
+
+//   if (ext === '.pdf') {
+//     rawText = await extractTextFromPDF(filePath);
+//   } else if (ext === '.docx' || ext === '.doc') {
+//     rawText = await extractTextFromDOCX(filePath);
+//   }
+//   console.log('rawText length for', originalName, ':', rawText.length);
+
+//   const parsed = await parseCVWithAI(rawText, originalName);
+//   let fileSize = 0;
+//   try { fileSize = fs.statSync(filePath).size; } catch (e) {}
+
+//   const cv = new CVUpload({
+//     ...parsed,
+//     originalFileName: originalName,
+//     filePath: '/uploads/cvs/' + path.basename(filePath.replace(/\\/g, '/')),
+//     fileSize,
+//     status: 'processed',
+//     rawText: rawText.slice(0, 5000),
+//     batchId,
+//   });
+
+//   await cv.save();
+
+//   // Save to User Management
+//   try {
+//     // Fallback name from filename
+//     const userName = parsed.name ||
+//       originalName.replace(/\.[^.]+$/, '').replace(/[_\-]+/g, ' ').replace(/\d{10,}/g, '').trim() ||
+//       'CV Candidate';
+
+//     // If email found — check if user exists, add resume to existing user
+//     if (parsed.email) {
+//       let user = await User.findOne({ email: parsed.email });
+//       if (user) {
+//         // User exists — just add resume
+//         user.resumes.push({ resumeTitle: originalName, resumePdf: cv.filePath, selected: false });
+//         // Update experience/city if empty
+//         if (!user.experience && parsed.experience) user.experience = parsed.experience;
+//         if ((!user.city || user.city === 'N/A') && parsed.city) user.city = parsed.city;
+//         await user.save();
+//         cv.userId = user._id;
+//         await cv.save();
+//         console.log('Resume added to existing user:', user.email);
+//       } else {
+//         // Create new user with this email
+//         const user = new User({
+//           name: userName,
+//           email: parsed.email,
+//           phone: parsed.phone || '',
+//           experience: parsed.experience || 'Fresher',
+//           city: parsed.city || 'N/A',
+//           state: 'N/A',
+//           country: '',
+//           password: Math.random().toString(36).slice(-8) + 'Aa1!',
+//           resumes: [{ resumeTitle: originalName, resumePdf: '/uploads/cvs/' + path.basename(filePath.replace(/\\/g, '/')), selected: true }],
+//         });
+//         await user.save();
+//         cv.userId = user._id;
+//         await cv.save();
+//         console.log('New user created with email:', parsed.email);
+//       }
+//     } else {
+//       // No email found — always create a NEW separate user (never merge)
+//       // Use a valid unique placeholder email that passes validator
+//       const placeholderEmail = 'cv.' + Date.now() + '.' + Math.random().toString(36).slice(-5) + '@cv-upload.com';
+//       const user = new User({
+//         name: userName,
+//         email: placeholderEmail,
+//         phone: parsed.phone || '',
+//         experience: parsed.experience || 'Fresher',
+//         city: parsed.city || 'N/A',
+//         state: 'N/A',
+//         country: '',
+//         password: Math.random().toString(36).slice(-8) + 'Aa1!',
+//         resumes: [{ resumeTitle: originalName, resumePdf: '/uploads/cvs/' + path.basename(filePath.replace(/\\/g, '/')), selected: true }],
+//       });
+//       await user.save();
+//       cv.userId = user._id;
+//       await cv.save();
+//       console.log('New user created (no email) for:', originalName);
+//     }
+//   } catch (e) {
+//     console.log('User save error:', e.message);
+//   }
+
+//   return cv;
+// }
+
+// // ─────────────────────────────────────────
+// // CONTROLLERS
+// // ─────────────────────────────────────────
+
+// exports.getUploadPage = async (req, res) => {
+//   try {
+//     const totalCVs     = await CVUpload.countDocuments();
+//     const processedCVs = await CVUpload.countDocuments({ status: 'processed' });
+//     const failedCVs    = await CVUpload.countDocuments({ status: 'failed' });
+//     const pendingCVs   = await CVUpload.countDocuments({ status: 'pending' });
+//     res.render('cv_upload', { totalCVs, processedCVs, failedCVs, pendingCVs });
+//   } catch (error) {
+//     req.flash('red', error.message);
+//     res.redirect('/');
+//   }
+// };
+
+// exports.postUploadCVs = async (req, res) => {
+//   try {
+//     if (!req.files || req.files.length === 0) {
+//       return res.status(400).json({ success: false, message: 'No files uploaded. Please select at least one file.' });
+//     }
+
+//     const batchId = 'batch_' + Date.now();
+//     let processed = 0;
+//     let failed = 0;
+
+//     for (const file of req.files) {
+//       const ext = path.extname(file.originalname).toLowerCase();
+
+//       if (ext === '.zip') {
+//         try {
+//           const unzipper = require('unzipper');
+
+//           // ── Step 1: Read all entries from ZIP (supports nested folders) ──
+//           const zipEntries = [];
+//           await new Promise((resolve, reject) => {
+//             fs.createReadStream(file.path)
+//               .pipe(unzipper.Parse())
+//               .on('entry', (entry) => {
+//                 const entryPath = entry.path;
+//                 const entryExt  = path.extname(entryPath).toLowerCase();
+//                 if (['.pdf', '.doc', '.docx'].includes(entryExt)) {
+//                   // Save each CV file to uploads/cvs/ directly
+//                   const safeName  = Date.now() + '_' + Math.random().toString(36).slice(-4) + '_' + path.basename(entryPath).replace(/\s+/g, '_');
+//                   const destPath  = path.join('./public/uploads/cvs', safeName);
+//                   const origName  = path.basename(entryPath);
+//                   zipEntries.push({ destPath, origName });
+//                   entry.pipe(fs.createWriteStream(destPath));
+//                 } else {
+//                   entry.autodrain(); // skip non-CV files
+//                 }
+//               })
+//               .on('close', resolve)
+//               .on('finish', resolve)
+//               .on('error', reject);
+//           });
+
+//           console.log('ZIP extracted', zipEntries.length, 'CV files');
+
+//           // ── Step 2: Process each extracted CV ──
+//           for (const { destPath, origName } of zipEntries) {
+//             try {
+//               // Small delay every 50 files to avoid overwhelming server
+//               if (processed > 0 && processed % 50 === 0) {
+//                 await new Promise(r => setTimeout(r, 100));
+//               }
+//               await processSingleCV(destPath, origName, batchId);
+//               processed++;
+//             } catch (e) {
+//               failed++;
+//               console.log('ZIP CV error:', origName, e.message);
+//             }
+//           }
+
+//           // ── Step 3: Delete original ZIP file ──
+//           try { fs.unlinkSync(file.path); } catch (e) {}
+
+//         } catch (e) {
+//           failed++;
+//           console.log('ZIP error:', e.message);
+//         }
+//       } else {
+//         try {
+//           await processSingleCV(file.path, file.originalname, batchId);
+//           processed++;
+//         } catch (e) {
+//           failed++;
+//           console.log('CV error:', e.message);
+//         }
+//       }
+//     }
+
+//     // Send JSON so XHR on frontend can handle it cleanly
+//     res.status(200).json({ success: true, processed, failed, message: 'Upload complete! Processed: ' + processed + (failed > 0 ? ', Failed: ' + failed : '') });
+
+//   } catch (error) {
+//     console.log('Upload error:', error.message);
+//     res.status(500).json({ success: false, message: 'Upload failed: ' + error.message });
+//   }
+// };
+
+// exports.searchCVs = async (req, res) => {
+//   try {
+//     const { search, skill, minExp, maxExp, city, page = 1 } = req.query;
+//     const limit = 20;
+//     const skip = (page - 1) * limit;
+//     let query = {};
+
+//     if (search) {
+//       query.$or = [
+//         { name:    { $regex: search, $options: 'i' } },
+//         { email:   { $regex: search, $options: 'i' } },
+//         { rawText: { $regex: search, $options: 'i' } },
+//       ];
+//     }
+//     if (skill) query.skills = { $in: [new RegExp(skill, 'i')] };
+//     if (minExp !== undefined && minExp !== '')
+//       query.experienceYears = { ...query.experienceYears, $gte: parseInt(minExp) };
+//     if (maxExp !== undefined && maxExp !== '')
+//       query.experienceYears = { ...query.experienceYears, $lte: parseInt(maxExp) };
+//     if (city) query.city = { $regex: city, $options: 'i' };
+
+//     const total      = await CVUpload.countDocuments(query);
+//     const cvs        = await CVUpload.find(query).sort('-date').skip(skip).limit(limit).lean();
+//     const totalPages = Math.ceil(total / limit);
+
+//     res.render('cv_search', { cvs, total, totalPages, currentPage: parseInt(page), query: req.query });
+//   } catch (error) {
+//     req.flash('red', error.message);
+//     res.redirect('/cv-upload');
+//   }
+// };
+
+// exports.viewCV = async (req, res) => {
+//   try {
+//     const cv = await CVUpload.findById(req.params.id).populate('userId');
+//     if (!cv) { req.flash('red', 'CV not found!'); return res.redirect('/cv-search'); }
+//     res.render('cv_view', { cv });
+//   } catch (error) {
+//     req.flash('red', error.message);
+//     res.redirect('/cv-search');
+//   }
+// };
+
+// exports.deleteCV = async (req, res) => {
+//   try {
+//     const cv = await CVUpload.findByIdAndDelete(req.params.id);
+//     if (cv && cv.filePath) {
+//       const fullPath = path.join(__dirname, '../../public', cv.filePath);
+//       try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch (e) {}
+//     }
+//     req.flash('green', 'CV deleted successfully.');
+//     res.redirect('/cv-search');
+//   } catch (error) {
+//     req.flash('red', error.message);
+//     res.redirect('/cv-search');
+//   }
+// };
+
+// exports.downloadCV = async (req, res) => {
+//   try {
+//     const cv = await CVUpload.findById(req.params.id);
+//     if (!cv || !cv.filePath) { req.flash('red', 'CV file not found!'); return res.redirect('/cv-search'); }
+//     // cv.filePath = '/uploads/cvs/filename.pdf'
+//     const fullPath = path.join(__dirname, '../../public', cv.filePath);
+//     console.log('Download path:', fullPath);
+//     if (!fs.existsSync(fullPath)) {
+//       // Fallback: try with 'public' prefix in case old records have it
+//       const fallbackPath = path.join(__dirname, '../../', cv.filePath);
+//       console.log('Fallback path:', fallbackPath);
+//       if (!fs.existsSync(fallbackPath)) {
+//         req.flash('red', 'File does not exist on server.');
+//         return res.redirect('/cv-search');
+//       }
+//       return res.download(fallbackPath, cv.originalFileName);
+//     }
+//     res.download(fullPath, cv.originalFileName);
+//   } catch (error) {
+//     req.flash('red', error.message);
+//     res.redirect('/cv-search');
+//   }
+// };
+
+// exports.getStats = async (req, res) => {
+//   try {
+//     const total     = await CVUpload.countDocuments();
+//     const processed = await CVUpload.countDocuments({ status: 'processed' });
+//     const failed    = await CVUpload.countDocuments({ status: 'failed' });
+//     const pending   = await CVUpload.countDocuments({ status: 'pending' });
+//     res.json({ total, processed, failed, pending });
+//   } catch (e) {
+//     res.json({ error: e.message });
+//   }
+// };
+
+
+// const fs = require('fs');
+// const path = require('path');
+// const multer = require('multer');
+
+// const CVUpload = require('../../models/cvUploadModel');
+// const User = require('../../models/userModel');
+
+// // ─────────────────────────────────────────
+// // MULTER CONFIG
+// // ─────────────────────────────────────────
+// const cvStorage = multer.diskStorage({
+//   destination: (req, file, cb) => {
+//     const dir = './public/uploads/cvs/';
+//     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+//     cb(null, dir);
+//   },
+//   filename: (req, file, cb) =>
+//     cb(null, Date.now() + '_' + file.originalname.replace(/\s+/g, '_')),
+// });
+
+// exports.cvUploader = multer({
+//   storage: cvStorage,
+//   limits: { fileSize: 1024 * 1024 * 200 },
+//   fileFilter: (req, file, cb) => {
+//     const ext = path.extname(file.originalname).toLowerCase();
+//     if (['.pdf', '.doc', '.docx', '.zip'].includes(ext)) {
+//       cb(null, true);
+//     } else {
+//       cb(new Error('Only PDF, DOC, DOCX, or ZIP files are allowed.'), false);
+//     }
+//   },
+// }).array('cvFiles', 2000);
+
+// // ─────────────────────────────────────────
+// // TEXT EXTRACTION — PDF and DOCX
+// // ─────────────────────────────────────────
+// function fixTextEncoding(text, buffer) {
+//   try {
+//     if (text.includes('\ufffd') && buffer) {
+//       const chardet = require('chardet');
+//       const iconv   = require('iconv-lite');
+//       const detected = chardet.detect(buffer);
+//       if (detected && detected !== 'UTF-8') {
+//         const redecoded = iconv.decode(buffer, detected);
+//         if (!redecoded.includes('\ufffd')) {
+//           console.log('Re-decoded with:', detected);
+//           return redecoded;
+//         }
+//       }
+//       return text
+//         .replace(/Gro\ufffdk/g, 'Großk')
+//         .replace(/([a-zA-Z])\ufffd([a-zA-Z])/g, (m, a, b) => a + 'ß' + b)
+//         .replace(/\ufffd/g, '');
+//     }
+//     return text;  
+//   } catch (e) {
+//     return text.replace(/\ufffd/g, '');
+//   }
+// }
+
+// async function extractTextFromPDF(filePath) {
+//   return new Promise((resolve) => {
+//     const timer = setTimeout(() => {
+//       console.log('pdf-parse timeout for:', filePath);
+//       resolve('');
+//     }, 15000);
+//     try {
+//       const pdfParse = require('pdf-parse');
+//       const buffer = fs.readFileSync(filePath);
+//       pdfParse(buffer)
+//         .then((data) => {
+//           clearTimeout(timer);
+//           let text = (data.text || '').trim();
+//           text = fixTextEncoding(text, buffer);
+//           console.log('PDF extracted chars:', text.length, 'from', path.basename(filePath));
+//           resolve(text);
+//         })
+//         .catch((e) => {
+//           clearTimeout(timer);
+//           console.log('pdf-parse error:', e.message);
+//           resolve('');
+//         });
+//     } catch (e) {
+//       clearTimeout(timer);
+//       console.log('pdf-parse require error:', e.message);
+//       resolve('');
+//     }
+//   });
+// }
+
+// async function extractTextFromDOCX(filePath) {
+//   try {
+//     const mammoth = require('mammoth');
+//     const buffer  = fs.readFileSync(filePath);
+//     const result  = await mammoth.extractRawText({ buffer });
+//     let text = (result.value || '').trim();
+//     text = fixTextEncoding(text, buffer);
+//     console.log('DOCX extracted chars:', text.length, 'from', path.basename(filePath));
+//     return text;
+//   } catch (e) {
+//     console.log('mammoth error:', e.message);
+//     return '';
+//   }
+// }
+
+// // ─────────────────────────────────────────
+// // PARSE CV TEXT — Gemini AI + Smart Local Fallback
+// // ─────────────────────────────────────────
+
+// function localParse(text) {
+//   if (!text) return {};
+//   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+//   // ── Email ──
+//   const emailM = text.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+//   const email = emailM ? emailM[0].toLowerCase() : '';
+
+//   // ── Phone ──
+//   let phone = '';
+//   const phoneLabelM = text.match(/(?:phone|tel(?:efon)?|mobile|mob|cell|handy|kontakt)[.\s:]+([+\d][\d\s\-()\/\.]{5,20}\d)/i);
+//   if (phoneLabelM) {
+//     phone = phoneLabelM[1].trim();
+//   } else {
+//     const phoneM = text.match(/(?<!\d)(\+\d{1,3}[\s\-]?\(?\d{1,5}\)?[\s\-]?\d{2,5}[\s\-]?\d{2,8})(?!\d)/);
+//     if (phoneM) phone = phoneM[1].trim();
+//   }
+
+//   // ── Name ──
+//   const skipLine = /^(curriculum|resume|cv |page |tel|phone|email|address|date|summary|objective|profile|experience|education|skills|about|references|professional|personal|key |languages|certif|linkedin|http|www\.)/i;
+//   let name = '';
+//   for (const line of lines.slice(0, 15)) {
+//     if (line.length < 2 || line.length > 70) continue;
+//     if (line.includes('@') || line.includes('http') || line.includes('|')) continue;
+//     if (line.match(/^\d/) || skipLine.test(line)) continue;
+//     if (line.match(/[A-Za-z\u00c0-\u024f]{2,}/)) {
+//       name = line.replace(/([a-z\u00e0-\u00ff])([A-Z\u00c0-\u00df])/g, '$1 $2').trim();
+//       const words = name.split(/\s+/);
+//       if (words.length > 4) name = words.slice(0, 3).join(' ');
+//       break;
+//     }
+//   }
+
+//   // ── City ──
+//   let city = '';
+//   const cityLabelM = text.match(/(?:location|city|based in|address|residing|ort)[.\s:]+([A-Za-z\u00c0-\u024f][A-Za-z\u00c0-\u024f\s,\-]{2,50}?)(?:\n|$|,\s*[A-Z]{2,}|\|)/i);
+//   if (cityLabelM) city = cityLabelM[1].split(',')[0].trim();
+
+//   if (!city) {
+//     for (const line of lines.slice(0, 6)) {
+//       if (line.includes('@') || line.includes('http') || line.includes('linkedin')) continue;
+//       const pipeFirst = line.split('|')[0].trim();
+//       if (pipeFirst.includes(',') && pipeFirst.match(/^[A-Za-z\u00c0-\u024f]/) && pipeFirst.length < 100) {
+//         const beforeComma = pipeFirst.split(',')[0].trim();
+//         if (beforeComma.length >= 2 && beforeComma.length <= 40 &&
+//             beforeComma.match(/^[A-Za-z\u00c0-\u024f][\w\s\u00c0-\u024f\-]*$/) &&
+//             !beforeComma.match(/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i)) {
+//           city = beforeComma;
+//           break;
+//         }
+//       }
+//     }
+//   }
+
+//   if (!city) {
+//     const firstLine = lines[0] || '';
+//     const parts = firstLine.split('|').map(p => p.trim());
+//     for (const p of parts.slice(1)) {
+//       if (!p.includes('@') && !p.includes('http') && p.match(/[A-Za-z]/) && p.length < 80) {
+//         const candidate = p.split(',')[0].trim();
+//         if (candidate.length > 1 && !candidate.match(/^\d/)) { city = candidate; break; }
+//       }
+//     }
+//   }
+
+//   // ── Skills ──
+//   const skills = new Set();
+//   const skillsSectionM = text.match(/(?:key\s+skills?|skills?|competencies|expertise|technologies)[:\s\n]+([\s\S]{10,500}?)(?=\n\s*\n|\n\s*(?:education|experience|employment|references|languages|certif|awards|$))/i);
+//   const skillsText = skillsSectionM ? skillsSectionM[1] : text;
+
+//   skillsText.split('|').forEach(s => {
+//     const clean = s.replace(/[\n\r]/g, ' ').trim();
+//     if (clean.length > 2 && clean.length < 60 && clean.match(/[A-Za-z]{2,}/) && !clean.match(/^\d/)) {
+//       skills.add(clean);
+//     }
+//   });
+//   skillsText.split(/[\n,•\*]/).forEach(s => {
+//     const clean = s.replace(/^[\s\-–]+/, '').trim();
+//     if (clean.length > 2 && clean.length < 60 && clean.match(/[A-Za-z]{2,}/) && !clean.match(/^\d{4}/)) {
+//       skills.add(clean);
+//     }
+//   });
+//   const badSkill = /^(skills?|competencies|expertise|key|and|the|with|for|or|in|to|of)$/i;
+//   const skillsArr = [...skills].filter(s => !badSkill.test(s)).slice(0, 15);
+
+//   // ── Job Titles ──
+//   const titleKeywords = ['coach','manager','director','scout','analyst','recruiter','developer',
+//     'engineer','designer','consultant','advisor','trainer','coordinator','executive','officer',
+//     'therapist','instructor','physiotherapist','scientist','specialist','head of','assistant'];
+//   const foundTitles = [];
+//   lines.forEach(line => {
+//     titleKeywords.forEach(t => {
+//       if (new RegExp('\\b' + t + '\\b', 'i').test(line) && line.length < 80) {
+//         const clean = line.replace(/[|•\-–*]/g, '').trim().slice(0, 60);
+//         if (!foundTitles.includes(clean)) foundTitles.push(clean);
+//       }
+//     });
+//   });
+
+//   // ── Experience — SUM of ALL roles ──
+//   let experienceYears = 0;
+//   const currentYear  = new Date().getFullYear();
+//   const currentMonth = new Date().getMonth() + 1;
+
+//   // Method 1: Explicit "X years experience" text
+//   const directExpM = text.match(/(\d+)\s*\+?\s*(years?|yrs?)\s*(of\s+)?(experience|exp\.?|work)/i);
+
+//   if (directExpM) {
+//     experienceYears = parseInt(directExpM[1]);
+//   } else {
+//     // Method 2: Parse ALL date ranges in Experience section and SUM them
+//     const expSectionM = text.match(/(?:professional\s+)?experience[:\s]*\n([\s\S]*?)(?=\n\s*(?:education|skills|languages|references|certif|awards|interests|$))/i);
+//     const expText = expSectionM ? expSectionM[1] : text.replace(/\n\s*education[\s\S]*?(experience|$)/i, '\n');
+
+//     const monthMap = {
+//       jan:1, feb:2, mar:3, apr:4, may:5, jun:6,
+//       jul:7, aug:8, sep:9, oct:10, nov:11, dec:12
+//     };
+
+//     // Match: "May 2022 – Present", "Nov 2015 – 2019", "2018 - 2023"
+//     const rangeRegex = /(?:(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\s.]+)?(\d{4})\s*[\u2013\u2014\u2012\-\u2010]+\s*(?:(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\s.]+)?(\d{4}|Present|present|current|Current)/gi;
+
+//     let totalMonths = 0;
+//     let rm;
+
+//     while ((rm = rangeRegex.exec(expText)) !== null) {
+//       const startMonth = rm[1] ? (monthMap[rm[1].toLowerCase()] || 1) : 1;
+//       const startYear  = parseInt(rm[2]);
+//       const isPresent  = /present|current/i.test(rm[4]);
+//       const endMonth   = rm[3]
+//         ? (monthMap[rm[3].toLowerCase()] || (isPresent ? currentMonth : 12))
+//         : (isPresent ? currentMonth : 12);
+//       const endYear    = isPresent ? currentYear : parseInt(rm[4]);
+
+//       if (startYear >= 1970 && startYear <= currentYear && endYear >= startYear) {
+//         const months = (endYear - startYear) * 12 + (endMonth - startMonth);
+//         if (months > 0 && months < 600) {
+//           totalMonths += months;
+//         }
+//       }
+//     }
+
+//     if (totalMonths > 0) {
+//       experienceYears = Math.round(totalMonths / 12);
+//     } else {
+//       // Fallback: use earliest year in work text
+//       const allYears = (expText.match(/\b(19[7-9]\d|20[0-2]\d)\b/g) || [])
+//         .map(Number).filter(y => y <= currentYear);
+//       if (allYears.length > 0) {
+//         experienceYears = currentYear - Math.min(...allYears);
+//       }
+//     }
+//   }
+
+//   const experience = experienceYears > 0
+//     ? experienceYears + ' Year' + (experienceYears !== 1 ? 's' : '')
+//     : 'Fresher';
+
+//   // ── Summary ──
+//   let summary = '';
+//   const summaryM = text.match(/(?:professional\s+summary|summary|objective|profile|about\s+me)[:\s\n]+([\s\S]{30,500}?)(?=\n\s*\n|\n\s*(?:experience|education|skills|$))/i);
+//   if (summaryM) summary = summaryM[1].replace(/\s+/g, ' ').trim().slice(0, 300);
+
+//   return { name, email, phone, city, experience, experienceYears, skills: skillsArr, jobTitles: foundTitles.slice(0, 5), summary };
+// }
+
+// // ── Gemini AI parser (primary) ──
+// async function parseCVWithAI(text, originalFileName) {
+//   if (!text || text.trim().length < 30) {
+//     return buildResult(localParse(''), originalFileName);
+//   }
+
+//   const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+//   const local = localParse(text);
+
+//   if (!GEMINI_API_KEY) {
+//     console.log('No GEMINI_API_KEY — using local parser');
+//     return buildResult(local, originalFileName);
+//   }
+
+//   try {
+//     const { GoogleGenAI } = require('@google/genai');
+//     const currentYear = new Date().getFullYear();
+
+//     const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+//     const prompt = `You are an expert CV/Resume parser. Read this CV and return ONLY a JSON object, no markdown, no explanation.
+
+// JSON format:
+// {"name":"","email":"","phone":"","city":"","experience":"X Years or Fresher","experienceYears":0,"skills":[],"jobTitles":[],"summary":""}
+
+// Rules:
+// 1. name: person's full name from top of CV only
+// 2. email: email address
+// 3. phone: any phone/mobile/tel number including country code like +49, +44
+// 4. city: city or region name ONLY — never email, never URL, never LinkedIn
+// 5. experience: SUM of ALL work roles (not education). Add up each role's duration. Example: if person has two roles of 4 years and 22 years, total = 26 Years
+// 6. experienceYears: integer — total sum of all roles
+// 7. skills: extract ALL skills — pipe-separated "Skill1 | Skill2", bullets, lists, comma-separated — max 15
+// 8. jobTitles: job roles/titles — max 5
+// 9. summary: professional summary paragraph — max 300 chars
+
+// CV TEXT:
+// ${text.slice(0, 4000)}`;
+
+//     const response = await genAI.models.generateContent({
+//       model: 'gemini-2.5-flash',
+//       contents: prompt,
+//       config: { temperature: 0.1, maxOutputTokens: 1000 },
+//     });
+
+//     const aiText = response.text || '';
+//     if (!aiText) return buildResult(local, originalFileName);
+
+//     const jsonStr = aiText.replace(/[`]{3}json\n?/g, '').replace(/[`]{3}\n?/g, '').trim();
+//     const ai = JSON.parse(jsonStr);
+
+//     const merged = {
+//       name:            pick(ai.name, local.name),
+//       email:           pick(ai.email, local.email),
+//       phone:           pick(ai.phone, local.phone),
+//       city:            pick(ai.city, local.city),
+//       experience:      pick(ai.experience, local.experience) || 'Fresher',
+//       experienceYears: parseInt(ai.experienceYears) || local.experienceYears || 0,
+//       skills:          mergeArrays(ai.skills, local.skills, 15),
+//       jobTitles:       mergeArrays(ai.jobTitles, local.jobTitles, 5),
+//       summary:         pick(ai.summary, local.summary),
+//     };
+//     console.log('AI parsed:', merged.name, '| city:', merged.city, '| phone:', merged.phone, '| skills:', merged.skills.length, '| exp:', merged.experience);
+//     return buildResult(merged, originalFileName);
+
+//   } catch (e) {
+//     console.log('Gemini parse error:', e.message, '— using local parser');
+//     return buildResult(local, originalFileName);
+//   }
+// }
+
+// function pick(...vals) {
+//   for (const v of vals) {
+//     if (v && typeof v === 'string' && v.trim() && v.trim() !== 'Fresher') return v.toString().trim();
+//   }
+//   return vals[vals.length - 1] || '';
+// }
+
+// function mergeArrays(a, b, max) {
+//   const combined = [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])];
+//   const unique = [...new Set(combined.map(s => s.toString().trim()).filter(Boolean))];
+//   return unique.slice(0, max);
+// }
+
+// function buildResult(data, originalFileName) {
+//   return {
+//     name:            (data.name || '').toString().trim().slice(0, 100),
+//     email:           (data.email || '').toString().toLowerCase().trim(),
+//     phone:           (data.phone || '').toString().trim(),
+//     city:            (data.city || '').toString().trim().slice(0, 100),
+//     experience:      (data.experience || 'Fresher').toString().trim(),
+//     experienceYears: parseInt(data.experienceYears) || 0,
+//     skills:          Array.isArray(data.skills) ? data.skills.slice(0, 15) : [],
+//     jobTitles:       Array.isArray(data.jobTitles) ? data.jobTitles.slice(0, 5) : [],
+//     summary:         (data.summary || '').toString().trim().slice(0, 300),
+//   };
+// }
+
+// // ─────────────────────────────────────────
+// // PROCESS SINGLE CV
+// // ─────────────────────────────────────────
+// async function processSingleCV(filePath, originalName, batchId) {
+//   const ext = path.extname(originalName).toLowerCase();
+//   let rawText = '';
+
+//   if (ext === '.pdf') {
+//     rawText = await extractTextFromPDF(filePath);
+//   } else if (ext === '.docx' || ext === '.doc') {
+//     rawText = await extractTextFromDOCX(filePath);
+//   }
+//   console.log('rawText length for', originalName, ':', rawText.length);
+
+//   const parsed = await parseCVWithAI(rawText, originalName);
+//   let fileSize = 0;
+//   try { fileSize = fs.statSync(filePath).size; } catch (e) {}
+
+//   const cv = new CVUpload({
+//     ...parsed,
+//     originalFileName: originalName,
+//     filePath: '/uploads/cvs/' + path.basename(filePath.replace(/\\/g, '/')),
+//     fileSize,
+//     status: 'processed',
+//     rawText: rawText.slice(0, 5000),
+//     batchId,
+//   });
+
+//   await cv.save();
+
+//   // Save to User Management
+//   try {
+//     const userName = parsed.name ||
+//       originalName.replace(/\.[^.]+$/, '').replace(/[_\-]+/g, ' ').replace(/\d{10,}/g, '').trim() ||
+//       'CV Candidate';
+
+//     if (parsed.email) {
+//       let user = await User.findOne({ email: parsed.email });
+//       if (user) {
+//         user.resumes.push({ resumeTitle: originalName, resumePdf: cv.filePath, selected: false });
+//         if (!user.experience && parsed.experience) user.experience = parsed.experience;
+//         if ((!user.city || user.city === 'N/A') && parsed.city) user.city = parsed.city;
+//         await user.save();
+//         cv.userId = user._id;
+//         await cv.save();
+//         console.log('Resume added to existing user:', user.email);
+//       } else {
+//         const user = new User({
+//           name: userName,
+//           email: parsed.email,
+//           phone: parsed.phone || '',
+//           experience: parsed.experience || 'Fresher',
+//           city: parsed.city || 'N/A',
+//           state: 'N/A',
+//           country: '',
+//           password: Math.random().toString(36).slice(-8) + 'Aa1!',
+//           resumes: [{ resumeTitle: originalName, resumePdf: '/uploads/cvs/' + path.basename(filePath.replace(/\\/g, '/')), selected: true }],
+//         });
+//         await user.save();
+//         cv.userId = user._id;
+//         await cv.save();
+//         console.log('New user created with email:', parsed.email);
+//       }
+//     } else {
+//       const placeholderEmail = 'cv.' + Date.now() + '.' + Math.random().toString(36).slice(-5) + '@cv-upload.com';
+//       const user = new User({
+//         name: userName,
+//         email: placeholderEmail,
+//         phone: parsed.phone || '',
+//         experience: parsed.experience || 'Fresher',
+//         city: parsed.city || 'N/A',
+//         state: 'N/A',
+//         country: '',
+//         password: Math.random().toString(36).slice(-8) + 'Aa1!',
+//         resumes: [{ resumeTitle: originalName, resumePdf: '/uploads/cvs/' + path.basename(filePath.replace(/\\/g, '/')), selected: true }],
+//       });
+//       await user.save();
+//       cv.userId = user._id;
+//       await cv.save();
+//       console.log('New user created (no email) for:', originalName);
+//     }
+//   } catch (e) {
+//     console.log('User save error:', e.message);
+//   }
+
+//   return cv;
+// }
+
+// // ─────────────────────────────────────────
+// // CONTROLLERS
+// // ─────────────────────────────────────────
+
+// exports.getUploadPage = async (req, res) => {
+//   try {
+//     const totalCVs     = await CVUpload.countDocuments();
+//     const processedCVs = await CVUpload.countDocuments({ status: 'processed' });
+//     const failedCVs    = await CVUpload.countDocuments({ status: 'failed' });
+//     const pendingCVs   = await CVUpload.countDocuments({ status: 'pending' });
+//     res.render('cv_upload', { totalCVs, processedCVs, failedCVs, pendingCVs });
+//   } catch (error) {
+//     req.flash('red', error.message);
+//     res.redirect('/');
+//   }
+// };
+
+// exports.postUploadCVs = async (req, res) => {
+//   try {
+//     if (!req.files || req.files.length === 0) {
+//       return res.status(400).json({ success: false, message: 'No files uploaded. Please select at least one file.' });
+//     }
+
+//     const batchId = 'batch_' + Date.now();
+//     let processed = 0;
+//     let failed = 0;
+
+//     for (const file of req.files) {
+//       const ext = path.extname(file.originalname).toLowerCase();
+
+//       if (ext === '.zip') {
+//         try {
+//           const unzipper = require('unzipper');
+//           const zipEntries = [];
+//           await new Promise((resolve, reject) => {
+//             fs.createReadStream(file.path)
+//               .pipe(unzipper.Parse())
+//               .on('entry', (entry) => {
+//                 const entryPath = entry.path;
+//                 const entryExt  = path.extname(entryPath).toLowerCase();
+//                 if (['.pdf', '.doc', '.docx'].includes(entryExt)) {
+//                   const safeName  = Date.now() + '_' + Math.random().toString(36).slice(-4) + '_' + path.basename(entryPath).replace(/\s+/g, '_');
+//                   const destPath  = path.join('./public/uploads/cvs', safeName);
+//                   const origName  = path.basename(entryPath);
+//                   zipEntries.push({ destPath, origName });
+//                   entry.pipe(fs.createWriteStream(destPath));
+//                 } else {
+//                   entry.autodrain();
+//                 }
+//               })
+//               .on('close', resolve)
+//               .on('finish', resolve)
+//               .on('error', reject);
+//           });
+
+//           console.log('ZIP extracted', zipEntries.length, 'CV files');
+
+//           for (const { destPath, origName } of zipEntries) {
+//             try {
+//               if (processed > 0 && processed % 50 === 0) {
+//                 await new Promise(r => setTimeout(r, 100));
+//               }
+//               await processSingleCV(destPath, origName, batchId);
+//               processed++;
+//             } catch (e) {
+//               failed++;
+//               console.log('ZIP CV error:', origName, e.message);
+//             }
+//           }
+
+//           try { fs.unlinkSync(file.path); } catch (e) {}
+
+//         } catch (e) {
+//           failed++;
+//           console.log('ZIP error:', e.message);
+//         }
+//       } else {
+//         try {
+//           await processSingleCV(file.path, file.originalname, batchId);
+//           processed++;
+//         } catch (e) {
+//           failed++;
+//           console.log('CV error:', e.message);
+//         }
+//       }
+//     }
+
+//     res.status(200).json({ success: true, processed, failed, message: 'Upload complete! Processed: ' + processed + (failed > 0 ? ', Failed: ' + failed : '') });
+
+//   } catch (error) {
+//     console.log('Upload error:', error.message);
+//     res.status(500).json({ success: false, message: 'Upload failed: ' + error.message });
+//   }
+// };
+
+// exports.searchCVs = async (req, res) => {
+//   try {
+//     const { search, skill, minExp, maxExp, city, page = 1 } = req.query;
+//     const limit = 20;
+//     const skip = (page - 1) * limit;
+//     let query = {};
+
+//     if (search) {
+//       query.$or = [
+//         { name:    { $regex: search, $options: 'i' } },
+//         { email:   { $regex: search, $options: 'i' } },
+//         { rawText: { $regex: search, $options: 'i' } },
+//       ];
+//     }
+//     if (skill) query.skills = { $in: [new RegExp(skill, 'i')] };
+//     if (minExp !== undefined && minExp !== '')
+//       query.experienceYears = { ...query.experienceYears, $gte: parseInt(minExp) };
+//     if (maxExp !== undefined && maxExp !== '')
+//       query.experienceYears = { ...query.experienceYears, $lte: parseInt(maxExp) };
+//     if (city) query.city = { $regex: city, $options: 'i' };
+
+//     const total      = await CVUpload.countDocuments(query);
+//     const cvs        = await CVUpload.find(query).sort('-date').skip(skip).limit(limit).lean();
+//     const totalPages = Math.ceil(total / limit);
+
+//     res.render('cv_search', { cvs, total, totalPages, currentPage: parseInt(page), query: req.query });
+//   } catch (error) {
+//     req.flash('red', error.message);
+//     res.redirect('/cv-upload');
+//   }
+// };
+
+// exports.viewCV = async (req, res) => {
+//   try {
+//     const cv = await CVUpload.findById(req.params.id).populate('userId');
+//     if (!cv) { req.flash('red', 'CV not found!'); return res.redirect('/cv-search'); }
+//     res.render('cv_view', { cv });
+//   } catch (error) {
+//     req.flash('red', error.message);
+//     res.redirect('/cv-search');
+//   }
+// };
+
+// exports.deleteCV = async (req, res) => {
+//   try {
+//     const cv = await CVUpload.findByIdAndDelete(req.params.id);
+//     if (cv && cv.filePath) {
+//       const fullPath = path.join(__dirname, '../../public', cv.filePath);
+//       try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch (e) {}
+//     }
+//     req.flash('green', 'CV deleted successfully.');
+//     res.redirect('/cv-search');
+//   } catch (error) {
+//     req.flash('red', error.message);
+//     res.redirect('/cv-search');
+//   }
+// };
+
+// exports.downloadCV = async (req, res) => {
+//   try {
+//     const cv = await CVUpload.findById(req.params.id);
+//     if (!cv || !cv.filePath) { req.flash('red', 'CV file not found!'); return res.redirect('/cv-search'); }
+//     const fullPath = path.join(__dirname, '../../public', cv.filePath);
+//     console.log('Download path:', fullPath);
+//     if (!fs.existsSync(fullPath)) {
+//       const fallbackPath = path.join(__dirname, '../../', cv.filePath);
+//       console.log('Fallback path:', fallbackPath);
+//       if (!fs.existsSync(fallbackPath)) {
+//         req.flash('red', 'File does not exist on server.');
+//         return res.redirect('/cv-search');
+//       }
+//       return res.download(fallbackPath, cv.originalFileName);
+//     }
+//     res.download(fullPath, cv.originalFileName);
+//   } catch (error) {
+//     req.flash('red', error.message);
+//     res.redirect('/cv-search');
+//   }
+// };
+
+// exports.getStats = async (req, res) => {
+//   try {
+//     const total     = await CVUpload.countDocuments();
+//     const processed = await CVUpload.countDocuments({ status: 'processed' });
+//     const failed    = await CVUpload.countDocuments({ status: 'failed' });
+//     const pending   = await CVUpload.countDocuments({ status: 'pending' });
+//     res.json({ total, processed, failed, pending });
+//   } catch (e) {
+//     res.json({ error: e.message });
+//   }
+// };
+
+
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
+
+const CVUpload = require('../../models/cvUploadModel');
+const User = require('../../models/userModel');
+
+// ─────────────────────────────────────────
+// MULTER CONFIG
+// ─────────────────────────────────────────
+const cvStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const dir = './public/uploads/cvs/';
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (req, file, cb) =>
+    cb(null, Date.now() + '_' + file.originalname.replace(/\s+/g, '_')),
+});
+
+exports.cvUploader = multer({
+  storage: cvStorage,
+  limits: { fileSize: 1024 * 1024 * 200 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (['.pdf', '.doc', '.docx', '.zip'].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF, DOC, DOCX, or ZIP files are allowed.'), false);
+    }
+  },
+}).array('cvFiles', 2000);
+
+// ─────────────────────────────────────────
+// TEXT EXTRACTION — PDF and DOCX
+// ─────────────────────────────────────────
+function fixTextEncoding(text, buffer) {
+  try {
+    if (text.includes('\ufffd') && buffer) {
+      const chardet = require('chardet');
+      const iconv   = require('iconv-lite');
+      const detected = chardet.detect(buffer);
+      if (detected && detected !== 'UTF-8') {
+        const redecoded = iconv.decode(buffer, detected);
+        if (!redecoded.includes('\ufffd')) {
+          console.log('Re-decoded with:', detected);
+          return redecoded;
+        }
+      }
+      return text
+        .replace(/Gro\ufffdk/g, 'Großk')
+        .replace(/([a-zA-Z])\ufffd([a-zA-Z])/g, (m, a, b) => a + 'ß' + b)
+        .replace(/\ufffd/g, '');
+    }
+    return text;
+  } catch (e) {
+    return text.replace(/\ufffd/g, '');
+  }
+}
+
+async function extractTextFromPDF(filePath) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      console.log('pdf-parse timeout for:', filePath);
+      resolve('');
+    }, 15000);
+    try {
+      const pdfParse = require('pdf-parse');
+      const buffer = fs.readFileSync(filePath);
+      pdfParse(buffer)
+        .then((data) => {
+          clearTimeout(timer);
+          let text = (data.text || '').trim();
+          text = fixTextEncoding(text, buffer);
+          console.log('PDF extracted chars:', text.length, 'from', path.basename(filePath));
+          resolve(text);
+        })
+        .catch((e) => {
+          clearTimeout(timer);
+          console.log('pdf-parse error:', e.message);
+          resolve('');
+        });
+    } catch (e) {
+      clearTimeout(timer);
+      console.log('pdf-parse require error:', e.message);
+      resolve('');
+    }
+  });
+}
+
+async function extractTextFromDOCX(filePath) {
+  try {
+    const mammoth = require('mammoth');
+    const buffer  = fs.readFileSync(filePath);
+    const result  = await mammoth.extractRawText({ buffer });
+    let text = (result.value || '').trim();
+    text = fixTextEncoding(text, buffer);
+    console.log('DOCX extracted chars:', text.length, 'from', path.basename(filePath));
+    return text;
+  } catch (e) {
+    console.log('mammoth error:', e.message);
+    return '';
+  }
+}
+
+// ─────────────────────────────────────────
+// PARSE CV TEXT — Gemini AI + Smart Local Fallback
+// ─────────────────────────────────────────
+
+function localParse(text) {
+  if (!text) return {};
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+
+  // ── Email ──
+  const emailM = text.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+  const email = emailM ? emailM[0].toLowerCase() : '';
+
+  // ── Phone ──
+  let phone = '';
+  const phoneLabelM = text.match(/(?:phone|tel(?:efon)?|mobile|mob|cell|handy|kontakt)[.\s:]+([+\d][\d\s\-()\/\.]{5,20}\d)/i);
+  if (phoneLabelM) {
+    phone = phoneLabelM[1].trim();
+  } else {
+    const phoneM = text.match(/(?<!\d)(\+\d{1,3}[\s\-]?\(?\d{1,5}\)?[\s\-]?\d{2,5}[\s\-]?\d{2,8})(?!\d)/);
+    if (phoneM) phone = phoneM[1].trim();
+  }
+
+  // ── Name ──
+  const skipLine = /^(curriculum|resume|cv |page |tel|phone|email|address|date|summary|objective|profile|experience|education|skills|about|references|professional|personal|key |languages|certif|linkedin|http|www\.)/i;
+  let name = '';
+  for (const line of lines.slice(0, 15)) {
+    if (line.length < 2 || line.length > 70) continue;
+    if (line.includes('@') || line.includes('http') || line.includes('|')) continue;
+    if (line.match(/^\d/) || skipLine.test(line)) continue;
+    if (line.match(/[A-Za-z\u00c0-\u024f]{2,}/)) {
+      name = line.replace(/([a-z\u00e0-\u00ff])([A-Z\u00c0-\u00df])/g, '$1 $2').trim();
+      const words = name.split(/\s+/);
+      if (words.length > 4) name = words.slice(0, 3).join(' ');
+      break;
+    }
+  }
+
+  // ── City ──
+  let city = '';
+  const cityLabelM = text.match(/(?:location|city|based in|address|residing|ort)[.\s:]+([A-Za-z\u00c0-\u024f][A-Za-z\u00c0-\u024f\s,\-]{2,50}?)(?:\n|$|,\s*[A-Z]{2,}|\|)/i);
+  if (cityLabelM) city = cityLabelM[1].split(',')[0].trim();
+
+  if (!city) {
+    for (const line of lines.slice(0, 6)) {
+      if (line.includes('@') || line.includes('http') || line.includes('linkedin')) continue;
+      const pipeFirst = line.split('|')[0].trim();
+      if (pipeFirst.includes(',') && pipeFirst.match(/^[A-Za-z\u00c0-\u024f]/) && pipeFirst.length < 100) {
+        const beforeComma = pipeFirst.split(',')[0].trim();
+        if (beforeComma.length >= 2 && beforeComma.length <= 40 &&
+            beforeComma.match(/^[A-Za-z\u00c0-\u024f][\w\s\u00c0-\u024f\-]*$/) &&
+            !beforeComma.match(/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i)) {
+          city = beforeComma;
+          break;
+        }
+      }
+    }
+  }
+
+  if (!city) {
+    const firstLine = lines[0] || '';
+    const parts = firstLine.split('|').map(p => p.trim());
+    for (const p of parts.slice(1)) {
+      if (!p.includes('@') && !p.includes('http') && p.match(/[A-Za-z]/) && p.length < 80) {
+        const candidate = p.split(',')[0].trim();
+        if (candidate.length > 1 && !candidate.match(/^\d/)) { city = candidate; break; }
+      }
+    }
+  }
+
+  // ── Country ──
+  let country = '';
+  const countryMap = {
+    'india': 'India',
+    'germany': 'Germany',
+    'deutschland': 'Germany',
+    'united kingdom': 'United Kingdom',
+    'uk': 'United Kingdom',
+    'england': 'United Kingdom',
+    'scotland': 'United Kingdom',
+    'wales': 'United Kingdom',
+    'united states': 'USA',
+    'usa': 'USA',
+    'u\\.s\\.a': 'USA',
+    'us': 'USA',
+    'america': 'USA',
+    'canada': 'Canada',
+    'australia': 'Australia',
+    'new zealand': 'New Zealand',
+    'france': 'France',
+    'spain': 'Spain',
+    'italy': 'Italy',
+    'netherlands': 'Netherlands',
+    'holland': 'Netherlands',
+    'belgium': 'Belgium',
+    'switzerland': 'Switzerland',
+    'austria': 'Austria',
+    'sweden': 'Sweden',
+    'norway': 'Norway',
+    'denmark': 'Denmark',
+    'finland': 'Finland',
+    'portugal': 'Portugal',
+    'poland': 'Poland',
+    'russia': 'Russia',
+    'china': 'China',
+    'japan': 'Japan',
+    'south korea': 'South Korea',
+    'korea': 'South Korea',
+    'singapore': 'Singapore',
+    'malaysia': 'Malaysia',
+    'indonesia': 'Indonesia',
+    'thailand': 'Thailand',
+    'vietnam': 'Vietnam',
+    'philippines': 'Philippines',
+    'pakistan': 'Pakistan',
+    'bangladesh': 'Bangladesh',
+    'sri lanka': 'Sri Lanka',
+    'nepal': 'Nepal',
+    'uae': 'UAE',
+    'united arab emirates': 'UAE',
+    'dubai': 'UAE',
+    'saudi arabia': 'Saudi Arabia',
+    'qatar': 'Qatar',
+    'kuwait': 'Kuwait',
+    'bahrain': 'Bahrain',
+    'south africa': 'South Africa',
+    'nigeria': 'Nigeria',
+    'kenya': 'Kenya',
+    'ghana': 'Ghana',
+    'egypt': 'Egypt',
+    'brazil': 'Brazil',
+    'mexico': 'Mexico',
+    'argentina': 'Argentina',
+    'colombia': 'Colombia',
+    'chile': 'Chile',
+  };
+
+  // First try label-based match (e.g. "Country: India")
+  const countryLabelM = text.match(/(?:country|nationality)[.\s:]+([A-Za-z\s]{2,40}?)(?:\n|$|,)/i);
+  if (countryLabelM) {
+    const candidate = countryLabelM[1].trim().toLowerCase();
+    for (const [key, val] of Object.entries(countryMap)) {
+      if (new RegExp('\\b' + key + '\\b').test(candidate)) { country = val; break; }
+    }
+  }
+
+  // Fallback: scan full text for country keywords
+  if (!country) {
+    const textLower = text.toLowerCase();
+    for (const [key, val] of Object.entries(countryMap)) {
+      if (new RegExp('\\b' + key + '\\b').test(textLower)) { country = val; break; }
+    }
+  }
+
+  // ── Skills ──
+  const skills = new Set();
+  const skillsSectionM = text.match(/(?:key\s+skills?|skills?|competencies|expertise|technologies)[:\s\n]+([\s\S]{10,500}?)(?=\n\s*\n|\n\s*(?:education|experience|employment|references|languages|certif|awards|$))/i);
+  const skillsText = skillsSectionM ? skillsSectionM[1] : text;
+
+  skillsText.split('|').forEach(s => {
+    const clean = s.replace(/[\n\r]/g, ' ').trim();
+    if (clean.length > 2 && clean.length < 60 && clean.match(/[A-Za-z]{2,}/) && !clean.match(/^\d/)) {
+      skills.add(clean);
+    }
+  });
+  skillsText.split(/[\n,•\*]/).forEach(s => {
+    const clean = s.replace(/^[\s\-–]+/, '').trim();
+    if (clean.length > 2 && clean.length < 60 && clean.match(/[A-Za-z]{2,}/) && !clean.match(/^\d{4}/)) {
+      skills.add(clean);
+    }
+  });
+  const badSkill = /^(skills?|competencies|expertise|key|and|the|with|for|or|in|to|of)$/i;
+  const skillsArr = [...skills].filter(s => !badSkill.test(s)).slice(0, 15);
+
+  // ── Job Titles ──
+  const titleKeywords = ['coach','manager','director','scout','analyst','recruiter','developer',
+    'engineer','designer','consultant','advisor','trainer','coordinator','executive','officer',
+    'therapist','instructor','physiotherapist','scientist','specialist','head of','assistant'];
+  const foundTitles = [];
+  lines.forEach(line => {
+    titleKeywords.forEach(t => {
+      if (new RegExp('\\b' + t + '\\b', 'i').test(line) && line.length < 80) {
+        const clean = line.replace(/[|•\-–*]/g, '').trim().slice(0, 60);
+        if (!foundTitles.includes(clean)) foundTitles.push(clean);
+      }
+    });
+  });
+
+  // ── Experience — SUM of ALL roles ──
+  let experienceYears = 0;
+  const currentYear  = new Date().getFullYear();
+  const currentMonth = new Date().getMonth() + 1;
+
+  const directExpM = text.match(/(\d+)\s*\+?\s*(years?|yrs?)\s*(of\s+)?(experience|exp\.?|work)/i);
+
+  if (directExpM) {
+    experienceYears = parseInt(directExpM[1]);
+  } else {
+    const expSectionM = text.match(/(?:professional\s+)?experience[:\s]*\n([\s\S]*?)(?=\n\s*(?:education|skills|languages|references|certif|awards|interests|$))/i);
+    const expText = expSectionM ? expSectionM[1] : text.replace(/\n\s*education[\s\S]*?(experience|$)/i, '\n');
+
+    const monthMap = {
+      jan:1, feb:2, mar:3, apr:4, may:5, jun:6,
+      jul:7, aug:8, sep:9, oct:10, nov:11, dec:12
+    };
+
+    const rangeRegex = /(?:(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\s.]+)?(\d{4})\s*[\u2013\u2014\u2012\-\u2010]+\s*(?:(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[\s.]+)?(\d{4}|Present|present|current|Current)/gi;
+
+    let totalMonths = 0;
+    let rm;
+
+    while ((rm = rangeRegex.exec(expText)) !== null) {
+      const startMonth = rm[1] ? (monthMap[rm[1].toLowerCase()] || 1) : 1;
+      const startYear  = parseInt(rm[2]);
+      const isPresent  = /present|current/i.test(rm[4]);
+      const endMonth   = rm[3]
+        ? (monthMap[rm[3].toLowerCase()] || (isPresent ? currentMonth : 12))
+        : (isPresent ? currentMonth : 12);
+      const endYear    = isPresent ? currentYear : parseInt(rm[4]);
+
+      if (startYear >= 1970 && startYear <= currentYear && endYear >= startYear) {
+        const months = (endYear - startYear) * 12 + (endMonth - startMonth);
+        if (months > 0 && months < 600) {
+          totalMonths += months;
+        }
+      }
+    }
+
+    if (totalMonths > 0) {
+      experienceYears = Math.round(totalMonths / 12);
+    } else {
+      const allYears = (expText.match(/\b(19[7-9]\d|20[0-2]\d)\b/g) || [])
+        .map(Number).filter(y => y <= currentYear);
+      if (allYears.length > 0) {
+        experienceYears = currentYear - Math.min(...allYears);
+      }
+    }
+  }
+
+  const experience = experienceYears > 0
+    ? experienceYears + ' Year' + (experienceYears !== 1 ? 's' : '')
+    : 'Fresher';
+
+  // ── Summary ──
+  let summary = '';
+  const summaryM = text.match(/(?:professional\s+summary|summary|objective|profile|about\s+me)[:\s\n]+([\s\S]{30,500}?)(?=\n\s*\n|\n\s*(?:experience|education|skills|$))/i);
+  if (summaryM) summary = summaryM[1].replace(/\s+/g, ' ').trim().slice(0, 300);
+
+  return { name, email, phone, city, country, experience, experienceYears, skills: skillsArr, jobTitles: foundTitles.slice(0, 5), summary };
+}
+
+// ── Gemini AI parser (primary) ──
+async function parseCVWithAI(text, originalFileName) {
+  if (!text || text.trim().length < 30) {
+    return buildResult(localParse(''), originalFileName);
+  }
+
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  const local = localParse(text);
+
+  if (!GEMINI_API_KEY) {
+    console.log('No GEMINI_API_KEY — using local parser');
+    return buildResult(local, originalFileName);
+  }
+
+  try {
+    const { GoogleGenAI } = require('@google/genai');
+
+    const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+    const prompt = `You are an expert CV/Resume parser. Read this CV and return ONLY a JSON object, no markdown, no explanation.
+
+JSON format:
+{"name":"","email":"","phone":"","city":"","country":"","experience":"X Years or Fresher","experienceYears":0,"skills":[],"jobTitles":[],"summary":""}
+
+Rules:
+1. name: person's full name from top of CV only
+2. email: email address
+3. phone: any phone/mobile/tel number including country code like +49, +44
+4. city: city or region name ONLY — never email, never URL, never LinkedIn
+5. country: country name extracted from address, nationality, or location info — e.g. "India", "Germany", "USA". Return empty string if not found.
+6. experience: SUM of ALL work roles (not education). Add up each role's duration. Example: if person has two roles of 4 years and 22 years, total = 26 Years
+7. experienceYears: integer — total sum of all roles
+8. skills: extract ALL skills — pipe-separated "Skill1 | Skill2", bullets, lists, comma-separated — max 15
+9. jobTitles: job roles/titles held by the candidate — max 5, extract from work experience section
+10. summary: professional summary paragraph — max 300 chars
+
+CV TEXT:
+${text.slice(0, 2200)}`;
+
+    const response = await genAI.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: { temperature: 0.1, maxOutputTokens: 3000 },
+    });
+
+    const aiText = response.text || '';
+    if (!aiText) return buildResult(local, originalFileName);
+
+    const jsonStr = aiText.replace(/[`]{3}json\n?/g, '').replace(/[`]{3}\n?/g, '').trim();
+    const ai = JSON.parse(jsonStr);
+
+    const merged = {
+      name:            pick(ai.name, local.name),
+      email:           pick(ai.email, local.email),
+      phone:           pick(ai.phone, local.phone),
+      city:            pick(ai.city, local.city),
+      country:         pick(ai.country, local.country),
+      experience:      pick(ai.experience, local.experience) || 'Fresher',
+      experienceYears: parseInt(ai.experienceYears) || local.experienceYears || 0,
+      skills:          mergeArrays(ai.skills, local.skills, 15),
+      jobTitles:       mergeArrays(ai.jobTitles, local.jobTitles, 5),
+      summary:         pick(ai.summary, local.summary),
+    };
+    console.log('AI parsed:', merged.name, '| city:', merged.city, '| country:', merged.country, '| phone:', merged.phone, '| skills:', merged.skills.length, '| exp:', merged.experience, '| jobTitles:', merged.jobTitles);
+    return buildResult(merged, originalFileName);
+
+  } catch (e) {
+    console.log('Gemini parse error:', e.message, '— using local parser');
+    return buildResult(local, originalFileName);
+  }
+}
+
+function pick(...vals) {
+  for (const v of vals) {
+    if (v && typeof v === 'string' && v.trim() && v.trim() !== 'Fresher') return v.toString().trim();
+  }
+  return vals[vals.length - 1] || '';
+}
+
+function mergeArrays(a, b, max) {
+  const combined = [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])];
+  const unique = [...new Set(combined.map(s => s.toString().trim()).filter(Boolean))];
+  return unique.slice(0, max);
+}
+
+function buildResult(data, originalFileName) {
+  return {
+    name:            (data.name || '').toString().trim().slice(0, 100),
+    email:           (data.email || '').toString().toLowerCase().trim(),
+    phone:           (data.phone || '').toString().trim(),
+    city:            (data.city || '').toString().trim().slice(0, 100),
+    country:         (data.country || '').toString().trim().slice(0, 100),
+    experience:      (data.experience || 'Fresher').toString().trim(),
+    experienceYears: parseInt(data.experienceYears) || 0,
+    skills:          Array.isArray(data.skills) ? data.skills.slice(0, 15) : [],
+    jobTitles:       Array.isArray(data.jobTitles) ? data.jobTitles.slice(0, 5) : [],
+    summary:         (data.summary || '').toString().trim().slice(0, 300),
+  };
+}
+
+// ─────────────────────────────────────────
+// PROCESS SINGLE CV
+// ─────────────────────────────────────────
+async function processSingleCV(filePath, originalName, batchId) {
+  const ext = path.extname(originalName).toLowerCase();
+  let rawText = '';
+
+  if (ext === '.pdf') {
+    rawText = await extractTextFromPDF(filePath);
+  } else if (ext === '.docx' || ext === '.doc') {
+    rawText = await extractTextFromDOCX(filePath);
+  }
+  console.log('rawText length for', originalName, ':', rawText.length);
+
+  const parsed = await parseCVWithAI(rawText, originalName);
+  let fileSize = 0;
+  try { fileSize = fs.statSync(filePath).size; } catch (e) {}
+
+  const cv = new CVUpload({
+    ...parsed,
+    originalFileName: originalName,
+    filePath: '/uploads/cvs/' + path.basename(filePath.replace(/\\/g, '/')),
+    fileSize,
+    status: 'processed',
+    rawText: rawText.slice(0, 5000),
+    batchId,
+  });
+
+  await cv.save();
+
+  // Save to User Management
+  try {
+    const userName = parsed.name ||
+      originalName.replace(/\.[^.]+$/, '').replace(/[_\-]+/g, ' ').replace(/\d{10,}/g, '').trim() ||
+      'CV Candidate';
+
+    if (parsed.email) {
+      let user = await User.findOne({ email: parsed.email });
+      if (user) {
+        // Update existing user
+        user.resumes.push({ resumeTitle: originalName, resumePdf: cv.filePath, selected: false });
+        if (!user.experience && parsed.experience) user.experience = parsed.experience;
+        if ((!user.city || user.city === 'N/A') && parsed.city) user.city = parsed.city;
+        if ((!user.country || user.country === '' || user.country === 'N/A') && parsed.country) user.country = parsed.country;
+        if (parsed.jobTitles && parsed.jobTitles.length > 0) user.cvJobTitles = parsed.jobTitles;
+        await user.save();
+        cv.userId = user._id;
+        await cv.save();
+        console.log('Resume added to existing user:', user.email);
+      } else {
+        // Create new user
+        const newUser = new User({
+          name: userName,
+          email: parsed.email,
+          phone: parsed.phone || '',
+          experience: parsed.experience || 'Fresher',
+          city: parsed.city || 'N/A',
+          state: 'N/A',
+          country: parsed.country || '',
+          cvJobTitles: parsed.jobTitles || [],
+          password: Math.random().toString(36).slice(-8) + 'Aa1!',
+          resumes: [{ resumeTitle: originalName, resumePdf: '/uploads/cvs/' + path.basename(filePath.replace(/\\/g, '/')), selected: true }],
+        });
+        await newUser.save();
+        cv.userId = newUser._id;
+        await cv.save();
+        console.log('New user created with email:', parsed.email, '| country:', parsed.country, '| jobTitles:', parsed.jobTitles);
+      }
+    } else {
+      // No email — create user with placeholder
+      const placeholderEmail = 'cv.' + Date.now() + '.' + Math.random().toString(36).slice(-5) + '@cv-upload.com';
+      const newUser = new User({
+        name: userName,
+        email: placeholderEmail,
+        phone: parsed.phone || '',
+        experience: parsed.experience || 'Fresher',
+        city: parsed.city || 'N/A',
+        state: 'N/A',
+        country: parsed.country || '',
+        cvJobTitles: parsed.jobTitles || [],
+        password: Math.random().toString(36).slice(-8) + 'Aa1!',
+        resumes: [{ resumeTitle: originalName, resumePdf: '/uploads/cvs/' + path.basename(filePath.replace(/\\/g, '/')), selected: true }],
+      });
+      await newUser.save();
+      cv.userId = newUser._id;
+      await cv.save();
+      console.log('New user created (no email) for:', originalName, '| country:', parsed.country, '| jobTitles:', parsed.jobTitles);
+    }
+  } catch (e) {
+    console.log('User save error:', e.message);
+  }
+
+  return cv;
+}
+
+// ─────────────────────────────────────────
+// CONTROLLERS
+// ─────────────────────────────────────────
+
+exports.getUploadPage = async (req, res) => {
+  try {
+    const totalCVs     = await CVUpload.countDocuments();
+    const processedCVs = await CVUpload.countDocuments({ status: 'processed' });
+    const failedCVs    = await CVUpload.countDocuments({ status: 'failed' });
+    const pendingCVs   = await CVUpload.countDocuments({ status: 'pending' });
+    res.render('cv_upload', { totalCVs, processedCVs, failedCVs, pendingCVs });
+  } catch (error) {
+    req.flash('red', error.message);
+    res.redirect('/');
+  }
+};
+
+exports.postUploadCVs = async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, message: 'No files uploaded. Please select at least one file.' });
+    }
+
+    const batchId = 'batch_' + Date.now();
+    let processed = 0;
+    let failed = 0;
+
+    for (const file of req.files) {
+      const ext = path.extname(file.originalname).toLowerCase();
+
+      if (ext === '.zip') {
+        try {
+          const unzipper = require('unzipper');
+          const zipEntries = [];
+          await new Promise((resolve, reject) => {
+            fs.createReadStream(file.path)
+              .pipe(unzipper.Parse())
+              .on('entry', (entry) => {
+                const entryPath = entry.path;
+                const entryExt  = path.extname(entryPath).toLowerCase();
+                if (['.pdf', '.doc', '.docx'].includes(entryExt)) {
+                  const safeName  = Date.now() + '_' + Math.random().toString(36).slice(-4) + '_' + path.basename(entryPath).replace(/\s+/g, '_');
+                  const destPath  = path.join('./public/uploads/cvs', safeName);
+                  const origName  = path.basename(entryPath);
+                  zipEntries.push({ destPath, origName });
+                  entry.pipe(fs.createWriteStream(destPath));
+                } else {
+                  entry.autodrain();
+                }
+              })
+              .on('close', resolve)
+              .on('finish', resolve)
+              .on('error', reject);
+          });
+
+          console.log('ZIP extracted', zipEntries.length, 'CV files');
+
+          for (const { destPath, origName } of zipEntries) {
+            try {
+              if (processed > 0 && processed % 50 === 0) {
+                await new Promise(r => setTimeout(r, 100));
+              }
+              await processSingleCV(destPath, origName, batchId);
+              processed++;
+            } catch (e) {
+              failed++;
+              console.log('ZIP CV error:', origName, e.message);
+            }
+          }
+
+          try { fs.unlinkSync(file.path); } catch (e) {}
+
+        } catch (e) {
+          failed++;
+          console.log('ZIP error:', e.message);
+        }
+      } else {
+        try {
+          await processSingleCV(file.path, file.originalname, batchId);
+          processed++;
+        } catch (e) {
+          failed++;
+          console.log('CV error:', e.message);
+        }
+      }
+    }
+
+    res.status(200).json({ success: true, processed, failed, message: 'Upload complete! Processed: ' + processed + (failed > 0 ? ', Failed: ' + failed : '') });
+
+  } catch (error) {
+    console.log('Upload error:', error.message);
+    res.status(500).json({ success: false, message: 'Upload failed: ' + error.message });
+  }
+};
+
+exports.searchCVs = async (req, res) => {
+  try {
+    const { search, skill, minExp, maxExp, city, page = 1 } = req.query;
+    const limit = 20;
+    const skip = (page - 1) * limit;
+    let query = {};
+
+    if (search) {
+      query.$or = [
+        { name:    { $regex: search, $options: 'i' } },
+        { email:   { $regex: search, $options: 'i' } },
+        { rawText: { $regex: search, $options: 'i' } },
+      ];
+    }
+    if (skill) query.skills = { $in: [new RegExp(skill, 'i')] };
+    if (minExp !== undefined && minExp !== '')
+      query.experienceYears = { ...query.experienceYears, $gte: parseInt(minExp) };
+    if (maxExp !== undefined && maxExp !== '')
+      query.experienceYears = { ...query.experienceYears, $lte: parseInt(maxExp) };
+    if (city) query.city = { $regex: city, $options: 'i' };
+
+    const total      = await CVUpload.countDocuments(query);
+    const cvs        = await CVUpload.find(query).sort('-date').skip(skip).limit(limit).lean();
+    const totalPages = Math.ceil(total / limit);
+
+    res.render('cv_search', { cvs, total, totalPages, currentPage: parseInt(page), query: req.query });
+  } catch (error) {
+    req.flash('red', error.message);
+    res.redirect('/cv-upload');
+  }
+};
+
+exports.viewCV = async (req, res) => {
+  try {
+    const cv = await CVUpload.findById(req.params.id).populate('userId');
+    if (!cv) { req.flash('red', 'CV not found!'); return res.redirect('/cv-search'); }
+    res.render('cv_view', { cv });
+  } catch (error) {
+    req.flash('red', error.message);
+    res.redirect('/cv-search');
+  }
+};
+
+exports.deleteCV = async (req, res) => {
+  try {
+    const cv = await CVUpload.findByIdAndDelete(req.params.id);
+    if (cv && cv.filePath) {
+      const fullPath = path.join(__dirname, '../../public', cv.filePath);
+      try { if (fs.existsSync(fullPath)) fs.unlinkSync(fullPath); } catch (e) {}
+    }
+    req.flash('green', 'CV deleted successfully.');
+    res.redirect('/cv-search');
+  } catch (error) {
+    req.flash('red', error.message);
+    res.redirect('/cv-search');
+  }
+};
+
+exports.downloadCV = async (req, res) => {
+  try {
+    const cv = await CVUpload.findById(req.params.id);
+    if (!cv || !cv.filePath) { req.flash('red', 'CV file not found!'); return res.redirect('/cv-search'); }
+    const fullPath = path.join(__dirname, '../../public', cv.filePath);
+    console.log('Download path:', fullPath);
+    if (!fs.existsSync(fullPath)) {
+      const fallbackPath = path.join(__dirname, '../../', cv.filePath);
+      console.log('Fallback path:', fallbackPath);
+      if (!fs.existsSync(fallbackPath)) {
+        req.flash('red', 'File does not exist on server.');
+        return res.redirect('/cv-search');
+      }
+      return res.download(fallbackPath, cv.originalFileName);
+    }
+    res.download(fullPath, cv.originalFileName);
+  } catch (error) {
+    req.flash('red', error.message);
+    res.redirect('/cv-search');
+  }
+};
+
+exports.getStats = async (req, res) => {
+  try {
+    const total     = await CVUpload.countDocuments();
+    const processed = await CVUpload.countDocuments({ status: 'processed' });
+    const failed    = await CVUpload.countDocuments({ status: 'failed' });
+    const pending   = await CVUpload.countDocuments({ status: 'pending' });
+    res.json({ total, processed, failed, pending });
+  } catch (e) {
+    res.json({ error: e.message });
+  }
+};

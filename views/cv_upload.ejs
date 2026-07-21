@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html class="loading" lang="en" data-textdirection="ltr">
+<head>
+  <%- include('_layouts/head') %>
+  <title>CV Uploads | <%= title %></title>
+  <style>
+    .upload-zone {
+      border: 2px dashed #4d4fff;
+      border-radius: 12px;
+      padding: 40px;
+      text-align: center;
+      background: #f8f5ff;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .upload-zone:hover, .upload-zone.dragover {
+      background: #ede7f6;
+      border-color: #512da8;
+    }
+    .upload-zone i { font-size: 60px; color: #7c4dff; }
+    .stat-card { border-radius: 12px; padding: 20px; color: white; text-align: center; }
+    .stat-card .number { font-size: 2.5rem; font-weight: bold; }
+    .stat-card .label { font-size: 0.9rem; opacity: 0.9; }
+    .progress-wrap { display: none; margin-top: 20px; }
+    .file-list-preview { max-height: 200px; overflow-y: auto; margin-top: 10px; font-size: 13px; }
+    .file-item { display: flex; justify-content: space-between; padding: 4px 8px; border-bottom: 1px solid #eee; }
+    #uploadStatus { margin-top: 15px; padding: 12px 16px; border-radius: 8px; display: none; font-weight: 500; }
+    #uploadStatus.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+    #uploadStatus.error { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+    #uploadStatus.info { background: #e3f2fd; color: #1565c0; border: 1px solid #90caf9; }
+  </style>
+</head>
+
+<body class="vertical-layout page-header-light vertical-menu-collapsible vertical-dark-menu preload-transitions 2-columns"
+  data-open="click" data-menu="vertical-dark-menu" data-col="2-columns">
+
+  <%- include('_layouts/sidenavbar') %>
+
+  <div id="main">
+    <div class="row">
+      <div id="breadcrumbs-wrapper" data-image="/app-assets/images/gallery/breadcrumb-bg.jpg">
+        <div class="container">
+          <div class="row">
+            <div class="col s12 m6 l6">
+              <h5 class="breadcrumbs-title mt-0 mb-0">
+                <a class="mr-2" href="/"><i class="material-icons">arrow_back</i></a>
+                <span>CV Uploads</span>
+              </h5>
+            </div>
+            <div class="col s12 m6 l6 right-align-md">
+              <a href="/cv-search" class="btn gradient-45deg-purple-deep-orange btn-breadcrumbs">
+                <i class="material-icons left">search</i> Search CVs
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col s12">
+        <div class="container">
+          <%- messages('messages', locals) %>
+
+          <!-- Stats Row -->
+          <div class="row" style="margin-top: 20px;">
+            <div class="col s6 m3">
+              <div class="stat-card" style="background: linear-gradient(135deg, #168aad, #073b53);">
+                <div class="number" id="stat-total"><%= totalCVs %></div>
+                <div class="label">Total CVs</div>
+              </div>
+            </div>
+            <div class="col s6 m3">
+              <div class="stat-card" style="background: linear-gradient(135deg, #62b6cb, #1b4965);">
+                <div class="number" id="stat-processed"><%= processedCVs %></div>
+                <div class="label">Processed</div>
+              </div>
+            </div>
+            <div class="col s6 m3">
+              <div class="stat-card" style="background: linear-gradient(135deg, #1b4965, #cae9ff);">
+                <div class="number" id="stat-failed"><%= failedCVs %></div>
+                <div class="label">Failed</div>
+              </div>
+            </div>
+            <div class="col s6 m3">
+              <div class="stat-card" style="background: linear-gradient(135deg, #387395, #0367af);">
+                <div class="number" id="stat-pending"><%= pendingCVs %></div>
+                <div class="label">Pending</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Upload Card -->
+          <div class="row">
+            <div class="col s12">
+              <div class="card">
+                <div class="card-content">
+                  <span class="card-title">Bulk CV Upload</span>
+                  <p class="grey-text" style="margin-bottom:20px;">
+                    Upload individual CV files (PDF, DOC, DOCX) or a ZIP folder containing multiple CVs.
+                    <strong>Maximum: 2000 files</strong> per batch.
+                  </p>
+
+                  <!-- Drag & Drop Zone -->
+                  <div class="upload-zone" id="uploadZone" onclick="document.getElementById('cvFiles').click()">
+                    <i class="material-icons">cloud_upload</i>
+                    <h5 style="color:#7c4dff; margin: 10px 0;">Click or Drag & Drop Files Here</h5>
+                    <p class="grey-text">Supports: PDF, DOC, DOCX (individual CVs) or ZIP (bulk folder)</p>
+                    <p class="grey-text"><small>Max file size: 200MB total | Max 2000 CVs per batch</small></p>
+                    <input type="file" id="cvFiles" name="cvFiles" multiple
+                           accept=".pdf,.doc,.docx,.zip" style="display:none;"
+                           onchange="handleFileSelect(this)">
+                  </div>
+
+                  <!-- File Preview -->
+                  <div id="filePreview" style="display:none; margin-top:15px;">
+                    <p><strong id="fileCount">0 files selected</strong></p>
+                    <div class="file-list-preview" id="fileList"></div>
+                  </div>
+
+                  <!-- Status message -->
+                  <div id="uploadStatus"></div>
+
+                  <!-- Progress bar -->
+                  <div class="progress-wrap" id="progressWrap">
+                    <p id="progressMsg"><strong>Uploading & Processing...</strong> Please wait.</p>
+                    <div class="progress">
+                      <div class="indeterminate"></div>
+                    </div>
+                    <p class="grey-text" style="font-size:12px; margin-top:8px;">
+                      ⏱ This may take up to 30 seconds for a single file. Do not refresh.
+                    </p>
+                  </div>
+                   <!-- gradient-45deg-purple-deep-orange -->
+
+                  <!-- Upload Button -->
+                 <div style="margin-top: 25px; text-align: center; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
+
+  <!-- Upload Button -->
+  <button
+    type="button"
+    id="uploadBtn"
+    class="btn btn-large"
+    onclick="doUpload()"
+    disabled
+    style="
+      background: linear-gradient(135deg, #1565c0, #42a5f5);
+      color: white !important;
+      border: none;
+      border-radius: 12px;
+      padding: 0 28px;
+      height: 52px;
+      line-height: 52px;
+      font-size: 16px;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(21, 101, 192, 0.3);
+      transition: all 0.3s ease;
+    "
+  >
+    <i class="material-icons left">upload_file</i>
+    Start Upload & Process
+  </button>
+
+  <!-- View CV Button -->
+  <a
+    href="/cv-search"
+    class="btn btn-large"
+    style="
+      background: #e3f2fd;
+      color: #1565c0;
+      border-radius: 12px;
+      padding: 0 28px;
+      height: 52px;
+      line-height: 52px;
+      font-size: 16px;
+      font-weight: 600;
+      border: 1px solid #90caf9;
+      display: flex;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      transition: all 0.3s ease;
+    "
+  >
+    <i class="material-icons left">list</i>
+    View All CVs
+  </a>
+
+</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Instructions -->
+          <div class="row">
+            <div class="col s12">
+              <div class="card">
+                <div class="card-content">
+                  <span class="card-title"><i class="material-icons left" style="color:#7c4dff;">info</i>How it works</span>
+                  <div class="row">
+                    <div class="col s12 m6">
+                      <h6><i class="material-icons tiny" style="color:#7c4dff;">looks_one</i> Upload CVs</h6>
+                      <p>Upload individual PDFs or a ZIP folder with up to 2000 CVs at once.</p>
+                      <h6><i class="material-icons tiny" style="color:#7c4dff;">looks_two</i> Automatic Parsing</h6>
+                      <p>System reads each CV and extracts Name, Email, Phone, Skills, and Experience.</p>
+                    </div>
+                    <div class="col s12 m6">
+                      <h6><i class="material-icons tiny" style="color:#7c4dff;">looks_3</i> Saved to Users</h6>
+                      <p>If email is found, candidate is automatically added to User Management.</p>
+                      <h6><i class="material-icons tiny" style="color:#7c4dff;">looks_4</i> Search & Download</h6>
+                      <p>Search by skills, experience, name, or location. Download any CV anytime.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+        <div class="content-overlay"></div>
+      </div>
+    </div>
+  </div>
+
+  <%- include('_layouts/commonJs') %>
+
+  <script>
+    // ── Drag & Drop ──
+    const zone = document.getElementById('uploadZone');
+    zone.addEventListener('dragover',  (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', ()  => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      document.getElementById('cvFiles').files = e.dataTransfer.files;
+      handleFileSelect(document.getElementById('cvFiles'));
+    });
+
+    // ── File selected ──
+    function handleFileSelect(input) {
+      const files = Array.from(input.files);
+      if (!files.length) return;
+
+      document.getElementById('filePreview').style.display = 'block';
+      document.getElementById('fileCount').textContent = files.length + ' file(s) selected';
+
+      const listEl = document.getElementById('fileList');
+      listEl.innerHTML = '';
+      files.slice(0, 50).forEach(f => {
+        const div = document.createElement('div');
+        div.className = 'file-item';
+        div.innerHTML = '<span>📄 ' + f.name + '</span><span class="grey-text">' +
+          (f.size/1024/1024).toFixed(2) + ' MB</span>';
+        listEl.appendChild(div);
+      });
+      if (files.length > 50) {
+        const m = document.createElement('div');
+        m.className = 'file-item grey-text';
+        m.textContent = '... and ' + (files.length - 50) + ' more files';
+        listEl.appendChild(m);
+      }
+
+      document.getElementById('uploadBtn').disabled = false;
+      showStatus('', '');
+    }
+
+    // ── Status helper ──
+    function showStatus(msg, type) {
+      const el = document.getElementById('uploadStatus');
+      if (!msg) { el.style.display = 'none'; return; }
+      el.className = type;
+      el.innerHTML = msg;
+      el.style.display = 'block';
+    }
+
+    // ── Main upload via XMLHttpRequest (no page freeze) ──
+    function doUpload() {
+      const input = document.getElementById('cvFiles');
+      if (!input.files || input.files.length === 0) {
+        showStatus('⚠️ Please select at least one file first.', 'error');
+        return;
+      }
+
+      // UI: show progress
+      document.getElementById('progressWrap').style.display = 'block';
+      document.getElementById('uploadBtn').disabled = true;
+      document.getElementById('uploadBtn').innerHTML = '<i class="material-icons left">hourglass_empty</i> Uploading...';
+      showStatus('', '');
+
+      const formData = new FormData();
+      Array.from(input.files).forEach(f => formData.append('cvFiles', f));
+
+      const xhr = new XMLHttpRequest();
+
+      // Track upload progress
+      xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          if (pct < 100) {
+            document.getElementById('progressMsg').innerHTML =
+              '<strong>Uploading ' + pct + '%...</strong> Sending file to server...';
+          } else {
+            document.getElementById('progressMsg').innerHTML =
+              '<strong>✅ File uploaded! Now extracting & processing CVs...</strong><br>' +
+              '<small class="grey-text">For large ZIP files (500–2000 CVs) this may take several minutes. Please wait.</small>';
+          }
+        }
+      };
+
+      // On complete
+      xhr.onload = function() {
+        document.getElementById('progressWrap').style.display = 'none';
+        document.getElementById('uploadBtn').disabled = false;
+        document.getElementById('uploadBtn').innerHTML =
+          '<i class="material-icons left">upload_file</i> Start Upload & Process';
+
+        try {
+          const resp = JSON.parse(xhr.responseText);
+          if (resp.success) {
+            const failMsg = resp.failed > 0 ? ' (' + resp.failed + ' failed)' : '';
+            showStatus('✅ Done! ' + resp.processed + ' CVs processed' + failMsg + ' — Redirecting to results...', 'success');
+            setTimeout(() => window.location.href = '/cv-search', 2000);
+          } else {
+            showStatus('❌ ' + resp.message, 'error');
+          }
+        } catch(e) {
+          if (xhr.status === 200) {
+            showStatus('✅ Upload complete! Redirecting...', 'success');
+            setTimeout(() => window.location.href = '/cv-search', 1500);
+          } else {
+            showStatus('❌ Upload failed. Please try again.', 'error');
+          }
+        }
+      };
+
+      // On network error
+      xhr.onerror = function() {
+        document.getElementById('progressWrap').style.display = 'none';
+        document.getElementById('uploadBtn').disabled = false;
+        document.getElementById('uploadBtn').innerHTML =
+          '<i class="material-icons left">upload_file</i> Start Upload & Process';
+        showStatus('❌ Network error. Please check your connection and try again.', 'error');
+      };
+
+      // Timeout: 5 minutes for large batches
+      xhr.timeout = 1800000; // 30 minutes for large ZIP batches (2000 CVs)
+      xhr.ontimeout = function() {
+        document.getElementById('progressWrap').style.display = 'none';
+        showStatus('⚠️ Request timed out. The server may still be processing — please check CV Search in 1 minute.', 'info');
+        document.getElementById('uploadBtn').disabled = false;
+        document.getElementById('uploadBtn').innerHTML =
+          '<i class="material-icons left">upload_file</i> Start Upload & Process';
+      };
+
+      xhr.open('POST', '/cv-upload');
+      xhr.send(formData);
+    }
+  </script>
+</body>
+</html>

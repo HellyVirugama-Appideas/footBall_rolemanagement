@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html class="loading" lang="en" data-textdirection="ltr">
+<!-- BEGIN: Head-->
+
+<head>
+    <%- include('_layouts/head') %>
+    <title>Roles | <%= title %></title>
+    <link rel="stylesheet" type="text/css" href="/app-assets/vendors/data-tables/css/jquery.dataTables.min.css">
+    <link rel="stylesheet" type="text/css" href="/app-assets/vendors/data-tables/extensions/responsive/css/responsive.dataTables.min.css">
+    <link rel="stylesheet" type="text/css" href="/app-assets/vendors/data-tables/css/select.dataTables.min.css">
+    <link rel="stylesheet" type="text/css" href="/app-assets/css/pages/data-tables.css">
+</head>
+<!-- END: Head-->
+
+<body class="vertical-layout page-header-light vertical-menu-collapsible vertical-dark-menu preload-transitions 2-columns" data-open="click" data-menu="vertical-dark-menu" data-col="2-columns">
+
+    <%- include('_layouts/sidenavbar') %>
+
+    <!-- BEGIN: Page Main-->
+    <div id="main">
+        <div class="row">
+            <div id="breadcrumbs-wrapper" data-image="/app-assets/images/gallery/breadcrumb-bg.jpg">
+                <div class="container">
+                    <div class="row">
+                        <div class="col s12 m6 l6">
+                            <h5 class="breadcrumbs-title mt-0 mb-0"><a class="mr-2" href="/"><i class="material-icons">arrow_back</i></a><span>Role Management</span></h5>
+                        </div>
+                        <div class="col s12 m6 l6 right-align-md">
+                            <% if (typeof can === 'function' && can('roles', 'add')) { %>
+                            <a class="btn gradient-45deg-purple-deep-orange pull-right btn-breadcrumbs" href="/roles/add">Add Role</a>
+                            <% } %>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col s12">
+                <div class="container">
+                    <div class="section section-data-tables">
+                        <div class="row">
+                            <div class="col s12">
+                                <div class="card">
+                                    <div class="card-content">
+                                        <%- messages('messages', locals) %>
+                                        <div class="row">
+                                            <div class="col s12 overflow">
+                                                <table id="page-length-option" class="display">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Sr</th>
+                                                            <th>Role Name</th>
+                                                            <th>Description</th>
+                                                            <th>Status</th>
+                                                            <th>Action</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <% for( let i=0; i < roles.length; i++ ) { %>
+                                                        <tr>
+                                                            <td><%= i+1 %></td>
+                                                            <td><%= roles[i].name %></td>
+                                                            <td><%= roles[i].description || '—' %></td>
+                                                            <td>
+                                                                <% if (roles[i].status === 'active') { %>
+                                                                <span class="chip green white-text">Active</span>
+                                                                <% } else { %>
+                                                                <span class="chip red white-text">Inactive</span>
+                                                                <% } %>
+                                                            </td>
+                                                            <td style="max-width: 130px;">
+                                                                <% if (typeof can === 'function' && can('roles', 'edit')) { %>
+                                                                <a href="/roles/edit/<%= roles[i]._id %>" title="Edit"><i class="material-icons">create</i></a>
+                                                                <a href="/roles/status/<%= roles[i]._id %>" title="Activate/Deactivate"><i class="material-icons"><%= roles[i].status === 'active' ? 'toggle_on' : 'toggle_off' %></i></a>
+                                                                <% } %>
+                                                                <% if (typeof can === 'function' && can('roles', 'delete')) { %>
+                                                                <a href="/roles/delete/<%= roles[i]._id %>" title="Delete" onclick="return confirm('Are you sure? Roles assigned to admins cannot be deleted.')"><i class="material-icons">delete</i></a>
+                                                                <% } %>
+                                                            </td>
+                                                        </tr>
+                                                        <% } %>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="content-overlay"></div>
+            </div>
+        </div>
+    </div>
+    <!-- END: Page Main-->
+
+    <%- include('_layouts/commonJs') %>
+    <script src="/app-assets/vendors/data-tables/js/jquery.dataTables.min.js"></script>
+    <%- include('_layouts/savePageLength') %>
+</body>
+
+</html>
