@@ -28,6 +28,16 @@
             color: #555;
             margin: 10px 0 15px;
         }
+        .perm-error {
+            display: none;
+            background: #ffebee;
+            color: #c62828;
+            border: 1px solid #ef9a9a;
+            padding: 10px 14px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body class="vertical-layout page-header-light vertical-menu-collapsible vertical-dark-menu preload-transitions 2-columns" data-open="click" data-menu="vertical-dark-menu" data-col="2-columns">
@@ -58,11 +68,11 @@
                                     <div class="card-content">
                                         <%- messages('messages', locals) %>
 
-                                        <!-- <div style="background:#fff3cd; padding:8px 12px; margin-bottom:15px; border-radius:4px;">
-                                            <strong>Modules Loaded:</strong> <%= modules ? modules.length : 0 %>
-                                        </div> -->
+                                        <div class="perm-error" id="permError">
+                                            Please select at least one permission (View/Add/Edit/Delete on any module) before creating the role.
+                                        </div>
 
-                                        <form method="POST" action="/roles/add">
+                                        <form method="POST" action="/roles/add" id="roleForm" onsubmit="return validateRoleForm()">
                                             <div class="row">
                                                 <div class="col s12 m6">
                                                     <div class="input-field">
@@ -81,7 +91,7 @@
                                             <div class="row">
                                                 <div class="col s12">
                                                     <h6>Module-wise Permissions</h6>
-                                                    <p class="perm-note">Enable/Disable permissions for this role.</p>
+                                                    <p class="perm-note">Enable/Disable permissions for this role. At least one permission must be selected.</p>
 
                                                     <div style="overflow-x:auto;">
                                                         <table class="perm-table">
@@ -102,7 +112,7 @@
                                                                         <td>
                                                                             <div class="switch">
                                                                                 <label>
-                                                                                    <input type="checkbox" name="perm_<%= m.key %>_view">
+                                                                                    <input type="checkbox" class="perm-checkbox" name="perm_<%= m.key %>_view">
                                                                                     <span class="lever"></span>
                                                                                 </label>
                                                                             </div>
@@ -110,7 +120,7 @@
                                                                         <td>
                                                                             <div class="switch">
                                                                                 <label>
-                                                                                    <input type="checkbox" name="perm_<%= m.key %>_add">
+                                                                                    <input type="checkbox" class="perm-checkbox" name="perm_<%= m.key %>_add">
                                                                                     <span class="lever"></span>
                                                                                 </label>
                                                                             </div>
@@ -118,7 +128,7 @@
                                                                         <td>
                                                                             <div class="switch">
                                                                                 <label>
-                                                                                    <input type="checkbox" name="perm_<%= m.key %>_edit">
+                                                                                    <input type="checkbox" class="perm-checkbox" name="perm_<%= m.key %>_edit">
                                                                                     <span class="lever"></span>
                                                                                 </label>
                                                                             </div>
@@ -134,7 +144,7 @@
                                                                             <% } else { %>
                                                                                 <div class="switch">
                                                                                     <label>
-                                                                                        <input type="checkbox" name="perm_<%= m.key %>_delete">
+                                                                                        <input type="checkbox" class="perm-checkbox" name="perm_<%= m.key %>_delete">
                                                                                         <span class="lever"></span>
                                                                                     </label>
                                                                                 </div>
@@ -172,5 +182,25 @@
     </div>
 
     <%- include('_layouts/commonJs') %>
+    <script>
+        function validateRoleForm() {
+            var checkboxes = document.querySelectorAll('#roleForm .perm-checkbox');
+            var anyChecked = false;
+            checkboxes.forEach(function (cb) {
+                if (cb.checked) anyChecked = true;
+            });
+
+            var errorBox = document.getElementById('permError');
+
+            if (!anyChecked) {
+                errorBox.style.display = 'block';
+                errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return false; // stops submit, works for Enter key AND button click
+            }
+
+            errorBox.style.display = 'none';
+            return true;
+        }
+    </script>
 </body>
 </html>

@@ -72,7 +72,7 @@
                                                                 <a href="/roles/status/<%= roles[i]._id %>" title="Activate/Deactivate"><i class="material-icons"><%= roles[i].status === 'active' ? 'toggle_on' : 'toggle_off' %></i></a>
                                                                 <% } %>
                                                                 <% if (typeof can === 'function' && can('roles', 'delete')) { %>
-                                                                <a href="/roles/delete/<%= roles[i]._id %>" title="Delete" onclick="return confirm('Are you sure? Roles assigned to admins cannot be deleted.')"><i class="material-icons">delete</i></a>
+                                                                <a href="/roles/delete/<%= roles[i]._id %>" title="Delete" onclick="return confirm('Delete this role? Note: if any admin is currently assigned this role, deletion will be blocked automatically.')"><i class="material-icons">delete</i></a>
                                                                 <% } %>
                                                             </td>
                                                         </tr>
